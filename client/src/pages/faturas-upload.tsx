@@ -53,22 +53,15 @@ export default function FaturasUploadPage() {
   const filteredClientes = clientes.filter((c) => c.usinaId === selectedUsinaId);
 
   const uploadMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      const response = await fetch("/api/faturas/upload", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Erro no upload");
-      }
+    mutationFn: async (data: { usinaId: string; precoKwh?: string }) => {
+      const response = await apiRequest("POST", "/api/faturas/upload", data);
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: { processedCount?: number; message?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
       toast({
-        title: "Upload realizado!",
-        description: `${data.processedCount || 1} fatura(s) processada(s) com sucesso.`,
+        title: "Processamento realizado!",
+        description: `${data.processedCount || 1} fatura(s) gerada(s) com sucesso.`,
       });
       navigate("/faturas");
     },
@@ -122,15 +115,6 @@ export default function FaturasUploadPage() {
   };
 
   const handleUpload = async () => {
-    if (files.length === 0) {
-      toast({
-        title: "Selecione arquivos",
-        description: "Adicione pelo menos um arquivo PDF para continuar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!selectedUsinaId) {
       toast({
         title: "Selecione a usina",
@@ -140,20 +124,23 @@ export default function FaturasUploadPage() {
       return;
     }
 
-    const formData = new FormData();
-    files.forEach((f, index) => {
-      formData.append(`files`, f.file);
-    });
-    formData.append("usinaId", selectedUsinaId);
-    if (precoKwh) {
-      formData.append("precoKwh", precoKwh);
+    if (filteredClientes.length === 0) {
+      toast({
+        title: "Nenhum cliente encontrado",
+        description: "Cadastre clientes para esta usina antes de processar faturas.",
+        variant: "destructive",
+      });
+      return;
     }
 
     setFiles((prev) =>
       prev.map((f) => ({ ...f, status: "uploading" as const }))
     );
 
-    uploadMutation.mutate(formData);
+    uploadMutation.mutate({
+      usinaId: selectedUsinaId,
+      precoKwh: precoKwh || undefined,
+    });
   };
 
   return (
@@ -312,8 +299,8 @@ export default function FaturasUploadPage() {
             size="lg"
             onClick={handleUpload}
             disabled={
-              files.length === 0 ||
               !selectedUsinaId ||
+              filteredClientes.length === 0 ||
               uploadMutation.isPending
             }
             data-testid="button-process-upload"
