@@ -362,6 +362,7 @@ export default function UsinasPage() {
           isLoading={isLoading}
           getRowKey={(usina) => usina.id}
           emptyMessage="Nenhuma usina encontrada"
+          onRowClick={(usina) => navigate(`/usinas/${usina.id}`)}
         />
       )}
     </div>

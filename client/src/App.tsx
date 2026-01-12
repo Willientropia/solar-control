@@ -13,6 +13,7 @@ import type { UserProfile } from "@shared/schema";
 import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import UsinasPage from "@/pages/usinas";
+import UsinaDetalhesPage from "@/pages/usina-detalhes";
 import ClientesPage from "@/pages/clientes";
 import FaturasPage from "@/pages/faturas";
 import FaturasUploadPage from "@/pages/faturas-upload";
@@ -107,6 +108,9 @@ function Router() {
       </Route>
       <Route path="/usinas">
         <ProtectedRoute component={UsinasPage} />
+      </Route>
+      <Route path="/usinas/:id">
+        <ProtectedRoute component={UsinaDetalhesPage} />
       </Route>
       <Route path="/clientes">
         <ProtectedRoute component={ClientesPage} />

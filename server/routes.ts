@@ -4,6 +4,85 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema } from "@shared/schema";
 import { z } from "zod";
+import multer from "multer";
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
+
+// Configure multer for PDF uploads
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + "-" + file.originalname);
+    },
+  }),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+});
+
+// Function to extract data from PDF using Python script
+async function extractPdfData(
+  pdfPath: string,
+  priceKwh: number,
+  discount: number
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(process.cwd(), "server/scripts/extract_fatura.py");
+    const pythonProcess = spawn("python3", [
+      scriptPath,
+      pdfPath,
+      "--price-kwh",
+      priceKwh.toString(),
+      "--discount",
+      discount.toString(),
+    ]);
+
+    let stdout = "";
+    let stderr = "";
+
+    pythonProcess.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    pythonProcess.on("close", (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result);
+        } catch (e) {
+          reject(new Error(`Failed to parse Python output: ${stdout}`));
+        }
+      } else {
+        reject(new Error(`Python script error: ${stderr}`));
+      }
+    });
+
+    pythonProcess.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
 
 // Middleware to check if user is admin
 async function isAdmin(req: Request, res: Response, next: NextFunction) {
@@ -232,27 +311,109 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Upload faturas (simplified - in production would handle PDF parsing)
+  // Extract data from PDF - returns data for verification
+  app.post("/api/faturas/extract", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "PDF file is required" });
+      }
+
+      const precoKwh = parseFloat(req.body.precoKwh || "0.85");
+      const desconto = parseFloat(req.body.desconto || "25");
+
+      const extractedData = await extractPdfData(req.file.path, precoKwh, desconto);
+
+      if (!extractedData.success) {
+        return res.status(400).json({ 
+          message: "Erro ao extrair dados do PDF",
+          error: extractedData.error 
+        });
+      }
+
+      // Add file info for preview
+      extractedData.fileName = req.file.originalname;
+      extractedData.filePath = req.file.path;
+      extractedData.fileUrl = `/api/faturas/pdf/${path.basename(req.file.path)}`;
+
+      res.json(extractedData);
+    } catch (error: any) {
+      console.error("Error extracting PDF data:", error);
+      res.status(500).json({ message: "Erro ao processar PDF", error: error.message });
+    }
+  });
+
+  // Serve PDF files for preview
+  app.get("/api/faturas/pdf/:filename", isAuthenticated, (req, res) => {
+    const filePath = path.join(uploadDir, req.params.filename);
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.sendFile(filePath);
+    } else {
+      res.status(404).json({ message: "PDF not found" });
+    }
+  });
+
+  // Confirm and save extracted fatura
+  app.post("/api/faturas/confirm", isAuthenticated, async (req: any, res) => {
+    try {
+      const { extractedData, clienteId, usinaId } = req.body;
+
+      if (!extractedData || !clienteId) {
+        return res.status(400).json({ message: "extractedData and clienteId are required" });
+      }
+
+      // Find the client to get discount info
+      const cliente = await storage.getCliente(clienteId);
+      if (!cliente) {
+        return res.status(404).json({ message: "Cliente not found" });
+      }
+
+      // Create the fatura with extracted data
+      const fatura = await storage.createFatura({
+        clienteId,
+        mesReferencia: extractedData.mesReferencia || "",
+        consumoScee: extractedData.consumoScee || "0",
+        consumoNaoCompensado: extractedData.consumoNaoCompensado || "0",
+        precoKwh: extractedData.precoKwhUsado?.toString() || "0.85",
+        valorSemDesconto: extractedData.valorSemDesconto?.toString() || "0",
+        valorComDesconto: extractedData.valorComDesconto?.toString() || "0",
+        economia: extractedData.economia?.toString() || "0",
+        lucro: extractedData.lucro?.toString() || "0",
+        saldoKwh: extractedData.saldoKwh || "0",
+        status: "pendente",
+        createdBy: req.user.claims.sub,
+        dadosExtraidos: extractedData,
+      });
+
+      await logAction(req.user.claims.sub, "criar", "fatura", fatura.id, {
+        clienteId,
+        mesReferencia: extractedData.mesReferencia,
+        unidadeConsumidora: extractedData.unidadeConsumidora,
+      });
+
+      res.status(201).json(fatura);
+    } catch (error: any) {
+      console.error("Error confirming fatura:", error);
+      res.status(500).json({ message: "Erro ao salvar fatura", error: error.message });
+    }
+  });
+
+  // Legacy upload endpoint (creates faturas for all clients of a usina)
   app.post("/api/faturas/upload", isAuthenticated, async (req: any, res) => {
     try {
-      // For MVP, we'll create a sample fatura entry
-      // In production, this would parse the PDF and extract data
       const { usinaId, precoKwh } = req.body;
       
       if (!usinaId) {
         return res.status(400).json({ message: "usinaId is required" });
       }
 
-      // Get clients for this usina
       const clientes = await storage.getClientesByUsina(usinaId);
       let processedCount = 0;
 
-      // Create sample faturas for each client (in production, this would parse PDFs)
       for (const cliente of clientes) {
         const mesRef = new Date().toLocaleString("pt-BR", { month: "short", year: "numeric" });
         const mesReferencia = mesRef.charAt(0).toUpperCase() + mesRef.slice(1);
         
-        // Sample calculation (in production, extract from PDF)
         const consumoScee = Math.random() * 500 + 100;
         const consumoNaoCompensado = Math.random() * 50;
         const preco = precoKwh ? parseFloat(precoKwh) : 0.85;
@@ -261,7 +422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const valorSemDesconto = (consumoScee + consumoNaoCompensado) * preco;
         const valorComDesconto = valorSemDesconto * (1 - desconto);
         const economia = valorSemDesconto - valorComDesconto;
-        const lucro = cliente.isPagante ? economia * 0.5 : 0; // 50% margin example
+        const lucro = cliente.isPagante ? economia * 0.5 : 0;
 
         await storage.createFatura({
           clienteId: cliente.id,
@@ -279,11 +440,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         processedCount++;
       }
 
-      await logAction(req.user.claims.sub, "upload", "fatura", undefined, { 
-        usinaId, 
-        processedCount 
-      });
-
+      await logAction(req.user.claims.sub, "upload", "fatura", undefined, { usinaId, processedCount });
       res.json({ processedCount, message: "Faturas criadas com sucesso" });
     } catch (error) {
       console.error("Error uploading faturas:", error);
