@@ -28,6 +28,7 @@ import { z } from "zod";
 import { Plus, Building2, Edit, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Usina } from "@shared/schema";
+import { formatNumber, parseToNumber } from "@/lib/utils";
 
 const usinaFormSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
@@ -111,10 +112,16 @@ export default function UsinasPage() {
   });
 
   const handleSubmit = (data: UsinaFormData) => {
+    const formattedData = {
+      ...data,
+      producaoMensalPrevista: parseToNumber(data.producaoMensalPrevista).toFixed(2),
+      descontoPadrao: parseToNumber(data.descontoPadrao).toFixed(2),
+    };
+
     if (editingUsina) {
-      updateMutation.mutate({ ...data, id: editingUsina.id });
+      updateMutation.mutate({ ...formattedData, id: editingUsina.id });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(formattedData);
     }
   };
 
@@ -123,8 +130,8 @@ export default function UsinasPage() {
     form.reset({
       nome: usina.nome,
       unidadeConsumidora: usina.unidadeConsumidora,
-      producaoMensalPrevista: usina.producaoMensalPrevista,
-      descontoPadrao: usina.descontoPadrao,
+      producaoMensalPrevista: formatNumber(usina.producaoMensalPrevista),
+      descontoPadrao: formatNumber(usina.descontoPadrao),
       endereco: usina.endereco || "",
     });
     setIsDialogOpen(true);
@@ -159,7 +166,7 @@ export default function UsinasPage() {
       header: "Produção Prevista",
       cell: (usina: Usina) => (
         <span className="font-mono">
-          {parseFloat(usina.producaoMensalPrevista).toLocaleString("pt-BR")} kWh
+          {formatNumber(usina.producaoMensalPrevista)} kWh
         </span>
       ),
     },
@@ -289,8 +296,8 @@ export default function UsinasPage() {
                         <FormLabel>Desconto Padrão (%)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            placeholder="Ex: 15"
+                            type="text"
+                            placeholder="Ex: 15,00"
                             {...field}
                             data-testid="input-usina-desconto"
                           />

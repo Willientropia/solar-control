@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MonthYearPicker } from "@/components/ui/month-year-picker";
+import { formatNumber, parseToNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,14 +51,6 @@ type GeracaoFormData = z.infer<typeof geracaoFormSchema>;
 interface GeracaoWithUsina extends GeracaoMensal {
   usina?: Usina;
 }
-
-const meses = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-];
-
-const currentYear = new Date().getFullYear();
-const years = [currentYear - 1, currentYear, currentYear + 1];
 
 export default function GeracaoPage() {
   const { toast } = useToast();
@@ -122,10 +116,15 @@ export default function GeracaoPage() {
   });
 
   const handleSubmit = (data: GeracaoFormData) => {
+    const formattedData = {
+      ...data,
+      kwhGerado: parseToNumber(data.kwhGerado).toFixed(2),
+    };
+
     if (editingGeracao) {
-      updateMutation.mutate({ ...data, id: editingGeracao.id });
+      updateMutation.mutate({ ...formattedData, id: editingGeracao.id });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(formattedData);
     }
   };
 
@@ -134,7 +133,7 @@ export default function GeracaoPage() {
     form.reset({
       usinaId: geracao.usinaId,
       mesReferencia: geracao.mesReferencia,
-      kwhGerado: geracao.kwhGerado,
+      kwhGerado: formatNumber(geracao.kwhGerado),
       observacoes: geracao.observacoes || "",
     });
     setIsDialogOpen(true);
@@ -172,7 +171,7 @@ export default function GeracaoPage() {
       className: "text-right",
       cell: (geracao: GeracaoWithUsina) => (
         <span className="font-mono">
-          {parseFloat(geracao.kwhGerado).toLocaleString("pt-BR")} kWh
+          {formatNumber(geracao.kwhGerado)} kWh
         </span>
       ),
     },
@@ -303,28 +302,12 @@ export default function GeracaoPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Mês de Referência</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-geracao-mes">
-                              <SelectValue placeholder="Selecione o mês" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {years.map((year) =>
-                              meses.map((mes, index) => (
-                                <SelectItem
-                                  key={`${mes}/${year}`}
-                                  value={`${mes}/${year}`}
-                                >
-                                  {mes}/{year}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <MonthYearPicker
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -337,8 +320,8 @@ export default function GeracaoPage() {
                         <FormLabel>Energia Gerada (kWh)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            placeholder="Ex: 10000"
+                            type="text"
+                            placeholder="Ex: 10.000,00"
                             {...field}
                             data-testid="input-geracao-kwh"
                           />

@@ -28,7 +28,9 @@ import {
   Zap,
   Users,
 } from "lucide-react";
+import { MonthYearPicker } from "@/components/ui/month-year-picker";
 import type { Usina } from "@shared/schema";
+import { formatNumber, formatCurrency, getCurrentMonthRef } from "@/lib/utils";
 
 interface ReportData {
   lucroTotal: number;
@@ -47,19 +49,9 @@ interface ReportData {
   }[];
 }
 
-const meses = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-];
-
-const currentYear = new Date().getFullYear();
-const currentMonth = new Date().getMonth();
-
 export default function RelatoriosPage() {
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
-  const [selectedPeriodo, setSelectedPeriodo] = useState<string>(
-    `${meses[currentMonth]}/${currentYear}`
-  );
+  const [selectedPeriodo, setSelectedPeriodo] = useState<string>(getCurrentMonthRef());
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -123,20 +115,11 @@ export default function RelatoriosPage() {
 
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Período:</span>
-          <Select value={selectedPeriodo} onValueChange={setSelectedPeriodo}>
-            <SelectTrigger className="w-40" data-testid="select-report-periodo">
-              <SelectValue placeholder="Selecione" />
-            </SelectTrigger>
-            <SelectContent>
-              {[currentYear - 1, currentYear].map((year) =>
-                meses.map((mes) => (
-                  <SelectItem key={`${mes}/${year}`} value={`${mes}/${year}`}>
-                    {mes}/{year}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
+          <MonthYearPicker
+            value={selectedPeriodo}
+            onChange={setSelectedPeriodo}
+            className="w-auto"
+          />
         </div>
       </div>
 
@@ -155,17 +138,17 @@ export default function RelatoriosPage() {
           <>
             <MetricCard
               title="Lucro Total"
-              value={`R$ ${(report?.lucroTotal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              value={formatCurrency(report?.lucroTotal)}
               icon={<Wallet className="h-5 w-5" />}
             />
             <MetricCard
               title="Economia Clientes"
-              value={`R$ ${(report?.economiaTotalClientes || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              value={formatCurrency(report?.economiaTotalClientes)}
               icon={<TrendingUp className="h-5 w-5" />}
             />
             <MetricCard
               title="kWh Distribuído"
-              value={`${(report?.kwhDistribuido || 0).toLocaleString("pt-BR")} kWh`}
+              value={`${formatNumber(report?.kwhDistribuido)} kWh`}
               icon={<Zap className="h-5 w-5" />}
             />
             <MetricCard
@@ -216,38 +199,44 @@ export default function RelatoriosPage() {
                         {row.unidadeConsumidora}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {row.consumoTotal.toLocaleString("pt-BR")}
+                        {formatNumber(row.consumoTotal)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        R$ {row.valorPago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        {formatCurrency(row.valorPago)}
                       </TableCell>
                       <TableCell className="text-right font-mono text-green-600 dark:text-green-400">
-                        R$ {row.economia.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        {formatCurrency(row.economia)}
                       </TableCell>
                       <TableCell className="text-right font-mono font-medium">
-                        R$ {row.lucro.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        {formatCurrency(row.lucro)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="border-t-2 font-semibold">
                     <TableCell colSpan={3}>Total</TableCell>
                     <TableCell className="text-right font-mono">
-                      R${" "}
-                      {report.detalhamentoPorCliente
-                        .reduce((acc, row) => acc + row.valorPago, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(
+                        report.detalhamentoPorCliente.reduce(
+                          (acc, row) => acc + row.valorPago,
+                          0
+                        )
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-mono text-green-600 dark:text-green-400">
-                      R${" "}
-                      {report.detalhamentoPorCliente
-                        .reduce((acc, row) => acc + row.economia, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(
+                        report.detalhamentoPorCliente.reduce(
+                          (acc, row) => acc + row.economia,
+                          0
+                        )
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      R${" "}
-                      {report.detalhamentoPorCliente
-                        .reduce((acc, row) => acc + row.lucro, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(
+                        report.detalhamentoPorCliente.reduce(
+                          (acc, row) => acc + row.lucro,
+                          0
+                        )
+                      )}
                     </TableCell>
                   </TableRow>
                 </TableBody>

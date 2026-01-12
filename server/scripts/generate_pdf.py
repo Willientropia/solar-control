@@ -22,17 +22,17 @@ def logo_to_base64(file_path):
 
 def format_currency(value):
     try:
-        num = float(value) if value else 0
-        return locale.format_string('%.2f', num, grouping=True)
+        num = float(value) if value else 0.0
+        return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
 
 def format_number(value):
     try:
-        num = float(value) if value else 0
-        return locale.format_string('%.2f', num, grouping=True)
+        num = float(value) if value else 0.0
+        return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
-        return "0"
+        return "0,00"
 
 def generate_invoice_pdf(data, output_path):
     template = env.get_template('fatura.html')

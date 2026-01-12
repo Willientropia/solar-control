@@ -37,6 +37,7 @@ import { z } from "zod";
 import { Plus, Users, Edit, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
+import { formatNumber, parseToNumber } from "@/lib/utils";
 
 const clienteFormSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
@@ -121,10 +122,15 @@ export default function ClientesPage() {
   });
 
   const handleSubmit = (data: ClienteFormData) => {
+    const formattedData = {
+      ...data,
+      desconto: parseToNumber(data.desconto).toFixed(2),
+    };
+
     if (editingCliente) {
-      updateMutation.mutate({ ...data, id: editingCliente.id });
+      updateMutation.mutate({ ...formattedData, id: editingCliente.id });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(formattedData);
     }
   };
 
@@ -136,7 +142,7 @@ export default function ClientesPage() {
       endereco: cliente.endereco || "",
       unidadeConsumidora: cliente.unidadeConsumidora,
       usinaId: cliente.usinaId,
-      desconto: cliente.desconto,
+      desconto: formatNumber(cliente.desconto),
       isPagante: cliente.isPagante,
     });
     setIsDialogOpen(true);
@@ -341,8 +347,8 @@ export default function ClientesPage() {
                         <FormLabel>Desconto (%)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            placeholder="Ex: 15"
+                            type="text"
+                            placeholder="Ex: 15,00"
                             {...field}
                             data-testid="input-cliente-desconto"
                           />

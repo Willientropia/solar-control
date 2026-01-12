@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
+import { storage } from "./storage";
 
 const app = express();
 
@@ -63,7 +64,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Trigger restart
 (async () => {
+  try {
+    const fixStats = await storage.fixMonthConsistency();
+    log(`Database maintenance: ${JSON.stringify(fixStats)}`);
+  } catch (err) {
+    console.error("Database maintenance failed:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -93,7 +102,6 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);

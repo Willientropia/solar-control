@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -54,27 +54,13 @@ import {
   FileDown,
 } from "lucide-react";
 import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
+import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef } from "@/lib/utils";
 
-function getCurrentMonthRef(): string {
-  const now = new Date();
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  return `${months[now.getMonth()]}/${now.getFullYear()}`;
-}
-
-function formatCurrency(value: string | number | null | undefined): string {
-  if (!value) return "R$ 0,00";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatNumber(value: string | number | null | undefined): string {
-  if (!value) return "0";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  return num.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-}
-
-function getAvailableMonths(faturas: Fatura[]): string[] {
-  const months = new Set(faturas.map((f) => f.mesReferencia));
+function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): string[] {
+  const months = new Set([
+    ...faturas.map((f) => f.mesReferencia),
+    ...geracoes.map((g) => g.mesReferencia)
+  ]);
   return Array.from(months).sort((a, b) => {
     const [mesA, anoA] = a.split("/");
     const [mesB, anoB] = b.split("/");
@@ -84,15 +70,12 @@ function getAvailableMonths(faturas: Fatura[]): string[] {
   });
 }
 
-type MonthFilter = "current" | "previous" | "all";
-
 export default function UsinaDetalhesPage() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const currentMonth = getCurrentMonthRef();
   
-  const [monthFilter, setMonthFilter] = useState<MonthFilter>("all");
   const [editingFatura, setEditingFatura] = useState<(Fatura & { cliente?: Cliente }) | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
@@ -130,12 +113,8 @@ export default function UsinaDetalhesPage() {
   };
   const previousMonth = getPreviousMonthRef();
   
-  // Filter faturas by month
-  const faturas = allUsinaFaturas.filter((f) => {
-    if (monthFilter === "current") return f.mesReferencia === currentMonth;
-    if (monthFilter === "previous") return f.mesReferencia === previousMonth;
-    return true;
-  });
+  // Faturas logic
+  const faturas = allUsinaFaturas;
   
   // Update fatura mutation
   const updateFaturaMutation = useMutation({
@@ -223,7 +202,9 @@ export default function UsinaDetalhesPage() {
   };
   
   const handleGenerateReport = () => {
-    const meses = selectedReportMonths.length > 0 ? selectedReportMonths : [currentMonth];
+    const meses = selectedReportMonths.length > 0 
+      ? selectedReportMonths 
+      : (availableMonths.length > 0 ? [availableMonths[0]] : [currentMonth]);
     generateReportMutation.mutate(meses);
   };
   
@@ -232,30 +213,56 @@ export default function UsinaDetalhesPage() {
     setEditFormData({
       mesReferencia: fatura.mesReferencia || "",
       dataVencimento: fatura.dataVencimento || "",
-      consumoScee: fatura.consumoScee || "",
-      consumoNaoCompensado: fatura.consumoNaoCompensado || "",
-      energiaInjetada: fatura.energiaInjetada || "",
-      saldoKwh: fatura.saldoKwh || "",
-      valorTotal: fatura.valorTotal || "",
-      valorSemDesconto: fatura.valorSemDesconto || "",
-      valorComDesconto: fatura.valorComDesconto || "",
-      economia: fatura.economia || "",
-      lucro: fatura.lucro || "",
+      consumoScee: formatNumber(fatura.consumoScee),
+      consumoNaoCompensado: formatNumber(fatura.consumoNaoCompensado),
+      energiaInjetada: formatNumber(fatura.energiaInjetada),
+      saldoKwh: formatNumber(fatura.saldoKwh),
+      valorTotal: formatNumber(fatura.valorTotal),
+      valorSemDesconto: formatNumber(fatura.valorSemDesconto),
+      valorComDesconto: formatNumber(fatura.valorComDesconto),
+      economia: formatNumber(fatura.economia),
+      lucro: formatNumber(fatura.lucro),
       status: fatura.status || "pendente",
     });
   };
   
   const handleEditFieldChange = (key: string, value: string) => {
-    setEditFormData((prev) => ({ ...prev, [key]: value }));
+    setEditFormData((prev) => {
+      const newData = { ...prev, [key]: value };
+
+      // Recalculate Lucro if dependent fields change
+      if (key === "valorComDesconto" || key === "valorTotal") {
+        const valComDesconto = parseToNumber(key === "valorComDesconto" ? value : prev.valorComDesconto || "0");
+        const valTotal = parseToNumber(key === "valorTotal" ? value : prev.valorTotal || "0");
+        const lucro = valComDesconto - valTotal;
+        newData.lucro = formatNumber(lucro);
+      }
+
+      return newData;
+    });
   };
   
   const handleSaveEdit = () => {
     if (!editingFatura) return;
-    updateFaturaMutation.mutate({ id: editingFatura.id, updates: editFormData });
+
+    const updates = { ...editFormData };
+    const numericFields = [
+      "consumoScee", "consumoNaoCompensado", "energiaInjetada", "saldoKwh",
+      "valorTotal", "valorSemDesconto", "valorComDesconto", "economia", "lucro"
+    ];
+
+    numericFields.forEach((field) => {
+      if (updates[field]) {
+        const num = parseToNumber(updates[field]);
+        updates[field] = num.toFixed(2);
+      }
+    });
+
+    updateFaturaMutation.mutate({ id: editingFatura.id, updates });
   };
 
   // Get available months for report selection
-  const availableMonths = getAvailableMonths(allUsinaFaturas);
+  const availableMonths = getAvailableMonths(allUsinaFaturas, geracoes);
   
   // Calculate monthly status
   const faturasDoMes = faturas.filter((f) => f.mesReferencia === currentMonth);
@@ -430,36 +437,6 @@ export default function UsinaDetalhesPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h3 className="text-lg font-medium">Faturas da Usina</h3>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center border rounded-lg overflow-hidden">
-                <Button
-                  variant={monthFilter === "previous" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setMonthFilter("previous")}
-                  className="rounded-none"
-                  data-testid="button-filter-previous"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  {previousMonth}
-                </Button>
-                <Button
-                  variant={monthFilter === "current" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setMonthFilter("current")}
-                  className="rounded-none border-x"
-                  data-testid="button-filter-current"
-                >
-                  {currentMonth}
-                </Button>
-                <Button
-                  variant={monthFilter === "all" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setMonthFilter("all")}
-                  className="rounded-none"
-                  data-testid="button-filter-all"
-                >
-                  Todos
-                </Button>
-              </div>
               <Button asChild>
                 <Link href="/faturas/upload">
                   <Upload className="h-4 w-4 mr-2" />
@@ -476,9 +453,7 @@ export default function UsinaDetalhesPage() {
               <CardContent className="py-12 text-center">
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  {monthFilter === "all" 
-                    ? "Nenhuma fatura encontrada" 
-                    : `Nenhuma fatura em ${monthFilter === "current" ? currentMonth : previousMonth}`}
+                  Nenhuma fatura encontrada
                 </p>
               </CardContent>
             </Card>

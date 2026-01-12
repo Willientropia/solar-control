@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente } from "@shared/schema";
+import { formatCurrency } from "@/lib/utils";
 
 interface FaturaWithCliente extends Fatura {
   cliente?: Cliente;
@@ -98,7 +99,7 @@ export default function FaturasPage() {
       className: "text-right",
       cell: (fatura: FaturaWithCliente) => (
         <span className="font-mono text-muted-foreground">
-          R$ {parseFloat(fatura.valorSemDesconto || "0").toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          {formatCurrency(fatura.valorSemDesconto)}
         </span>
       ),
     },
@@ -108,7 +109,7 @@ export default function FaturasPage() {
       className: "text-right",
       cell: (fatura: FaturaWithCliente) => (
         <span className="font-mono font-medium">
-          R$ {parseFloat(fatura.valorComDesconto || "0").toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          {formatCurrency(fatura.valorComDesconto)}
         </span>
       ),
     },
@@ -118,7 +119,7 @@ export default function FaturasPage() {
       className: "text-right",
       cell: (fatura: FaturaWithCliente) => (
         <span className="font-mono text-green-600 dark:text-green-400">
-          R$ {parseFloat(fatura.economia || "0").toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          {formatCurrency(fatura.economia)}
         </span>
       ),
     },

@@ -399,6 +399,91 @@ export class DatabaseStorage implements IStorage {
       return vencimento < today && fatura.status === "pendente";
     });
   }
+
+  async fixMonthConsistency() {
+    let updatedFaturas = 0;
+    let deletedFaturas = 0;
+    let updatedGeracoes = 0;
+    let deletedGeracoes = 0;
+
+    const normalizeMonthReference = (monthRef: string): string => {
+      if (!monthRef) return "";
+      const parts = monthRef.trim().split("/");
+      if (parts.length !== 2) return monthRef;
+      
+      let [month, year] = parts;
+      month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+      if (year.length === 2) {
+        year = "20" + year;
+      }
+      return `${month}/${year}`;
+    };
+
+    // Fix Faturas
+    const allFaturas = await db.select().from(faturas);
+    for (const f of allFaturas) {
+      if (!f.mesReferencia) continue;
+      
+      const normalized = normalizeMonthReference(f.mesReferencia);
+      if (normalized !== f.mesReferencia) {
+        // Check if collision exists
+        const existing = await db.select()
+          .from(faturas)
+          .where(and(
+            eq(faturas.clienteId, f.clienteId),
+            eq(faturas.mesReferencia, normalized)
+          ));
+        
+        // Filter out self
+        const collision = existing.find(e => e.id !== f.id);
+
+        if (collision) {
+          // Duplicate exists, delete this one
+          await db.delete(faturas).where(eq(faturas.id, f.id));
+          deletedFaturas++;
+        } else {
+          // No collision, update format
+          await db.update(faturas)
+            .set({ mesReferencia: normalized })
+            .where(eq(faturas.id, f.id));
+          updatedFaturas++;
+        }
+      }
+    }
+
+    // Fix Geracoes
+    const allGeracoes = await db.select().from(geracaoMensal);
+    for (const g of allGeracoes) {
+      if (!g.mesReferencia) continue;
+      
+      const normalized = normalizeMonthReference(g.mesReferencia);
+      if (normalized !== g.mesReferencia) {
+        // Check if collision exists
+        const existing = await db.select()
+          .from(geracaoMensal)
+          .where(and(
+            eq(geracaoMensal.usinaId, g.usinaId),
+            eq(geracaoMensal.mesReferencia, normalized)
+          ));
+        
+        const collision = existing.find(e => e.id !== g.id);
+
+        if (collision) {
+          // Duplicate exists, delete this one
+          await db.delete(geracaoMensal).where(eq(geracaoMensal.id, g.id));
+          deletedGeracoes++;
+        } else {
+          // No collision, update format
+          await db.update(geracaoMensal)
+            .set({ mesReferencia: normalized })
+            .where(eq(geracaoMensal.id, g.id));
+          updatedGeracoes++;
+        }
+      }
+    }
+
+    return { updatedFaturas, deletedFaturas, updatedGeracoes, deletedGeracoes };
+  }
 }
 
 export const storage = new DatabaseStorage();

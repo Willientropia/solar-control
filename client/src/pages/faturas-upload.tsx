@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
-import { cn } from "@/lib/utils";
+import { cn, parseToNumber, formatNumber } from "@/lib/utils";
 
 interface ExtractedData {
   success: boolean;
@@ -113,12 +113,6 @@ const FIELD_CONFIG: { key: keyof ExtractedData; label: string; type: "text" | "n
   { key: "economia", label: "Economia (R$)", type: "text" },
   { key: "lucro", label: "Lucro Estimado (R$)", type: "text" },
 ];
-
-function normalizeDecimal(value: string | number | undefined | null): string {
-  if (value === null || value === undefined || value === "") return "";
-  const strValue = String(value);
-  return strValue.replace(/\./g, "").replace(",", ".");
-}
 
 export default function FaturasUploadPage() {
   const [, navigate] = useLocation();
@@ -209,7 +203,8 @@ export default function FaturasUploadPage() {
 
       Object.entries(data.extractedData).forEach(([key, value]) => {
         if (numericFields.includes(key)) {
-          normalizedData[key] = normalizeDecimal(value);
+          const num = parseToNumber(value);
+          normalizedData[key] = isNaN(num) ? "0.00" : num.toFixed(2);
         } else {
           normalizedData[key] = value;
         }
@@ -299,7 +294,19 @@ export default function FaturasUploadPage() {
   };
 
   const handleFieldChange = (key: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [key]: value };
+
+      // Recalculate Lucro if dependent fields change
+      if (key === "valorComDesconto" || key === "valorTotal") {
+        const valComDesconto = parseToNumber(key === "valorComDesconto" ? value : prev.valorComDesconto || "0");
+        const valTotal = parseToNumber(key === "valorTotal" ? value : prev.valorTotal || "0");
+        const lucro = valComDesconto - valTotal;
+        newData.lucro = formatNumber(lucro);
+      }
+
+      return newData;
+    });
   };
 
   const handleConfirm = () => {

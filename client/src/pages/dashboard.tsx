@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Link } from "wouter";
+import { formatNumber, formatCurrency } from "@/lib/utils";
 
 interface DashboardStats {
   totalUsinas: number;
@@ -94,7 +95,7 @@ export default function DashboardPage() {
             />
             <MetricCard
               title="Geração Mensal"
-              value={`${(stats?.kwhGeradoMes || 0).toLocaleString("pt-BR")} kWh`}
+              value={`${formatNumber(stats?.kwhGeradoMes)} kWh`}
               subtitle="Total gerado este mês"
               icon={<Zap className="h-5 w-5" />}
             />
@@ -128,7 +129,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between py-2 border-b">
                   <span className="text-muted-foreground">Lucro do Mês</span>
                   <span className="text-lg font-semibold font-mono text-green-600 dark:text-green-400">
-                    R$ {(stats?.lucroMensal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    {formatCurrency(stats?.lucroMensal)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b">
@@ -136,13 +137,13 @@ export default function DashboardPage() {
                     Economia Total dos Clientes
                   </span>
                   <span className="text-lg font-semibold font-mono">
-                    R$ {(stats?.economiaTotalClientes || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    {formatCurrency(stats?.economiaTotalClientes)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="text-muted-foreground">Saldo de Créditos</span>
                   <span className="text-lg font-semibold font-mono">
-                    {(stats?.saldoTotalKwh || 0).toLocaleString("pt-BR")} kWh
+                    {formatNumber(stats?.saldoTotalKwh)} kWh
                   </span>
                 </div>
               </>

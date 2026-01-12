@@ -116,14 +116,70 @@ def extract_balance(text):
 
 def sanitize_to_float(value):
     """Converte um valor para float, lidando com strings formatadas."""
+    if value is None:
+        return 0.0
+        
+    if isinstance(value, (int, float)):
+        return float(value)
+        
     if isinstance(value, str):
         try:
-            return float(value.replace('.', '').replace(',', '.'))
+            # Limpa caracteres não numéricos exceto ponto e vírgula
+            clean_value = re.sub(r'[^\d.,-]', '', value)
+            
+            if not clean_value:
+                return 0.0
+
+            # Se tiver ponto e vírgula
+            if '.' in clean_value and ',' in clean_value:
+                last_point = clean_value.rfind('.')
+                last_comma = clean_value.rfind(',')
+                
+                # Se o ponto vier depois da vírgula (1,000.00) -> Formato US
+                if last_point > last_comma:
+                    return float(clean_value.replace(',', ''))
+                # Se a vírgula vier depois do ponto (1.000,00) -> Formato BR
+                else:
+                    return float(clean_value.replace('.', '').replace(',', '.'))
+            
+            # Se só tiver vírgula (1000,00) -> Formato BR decimal
+            elif ',' in clean_value:
+                return float(clean_value.replace('.', '').replace(',', '.'))
+                
+            # Se só tiver ponto
+            elif '.' in clean_value:
+                # Se tiver mais de um ponto (1.000.000), remove todos -> milhar
+                if clean_value.count('.') > 1:
+                    return float(clean_value.replace('.', ''))
+                
+                # Se tiver um ponto, verifica se parece milhar (3 casas decimais exatas no final e valor alto?)
+                # É arriscado. Mas em faturas BR, ponto é milhar. 
+                # Se o texto foi extraído como 1.000, deve ser 1000.
+                # Mas 10.50 é 10.5?
+                # Vamos assumir que se não tem vírgula, e tem ponto, pode ser US decimal ou BR milhar.
+                # Mas dado o contexto de faturas no BR, valores monetários geralmente têm vírgula.
+                # Se regex pegou 1.000, pode ser 1000.
+                parts = clean_value.split('.')
+                if len(parts[-1]) == 3 and len(parts) > 1: # ex: 1.000
+                     return float(clean_value.replace('.', ''))
+                
+                # Default para float python normal (ponto decimal) se não parecer milhar
+                return float(clean_value)
+                
+            return float(clean_value)
         except ValueError:
             return 0.0
-    elif isinstance(value, (int, float)):
-        return float(value)
+            
     return 0.0
+
+
+def format_to_br(value):
+    """Formata float para string BR (1.000,00)."""
+    try:
+        val = float(value)
+        return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return "0,00"
 
 
 def extract_data_from_text(text, pdf_path):
@@ -277,8 +333,9 @@ def calculate_values(data, price_kwh, discount_percent):
         # Economia
         data['economia'] = round(valor_sem_desconto - valor_com_desconto, 2)
 
-        # Lucro (50% da economia como exemplo)
-        data['lucro'] = round(data['economia'] * 0.5, 2)
+        # Lucro = Valor Com Desconto - Valor Total Fatura
+        valor_total = sanitize_to_float(data.get('valorTotal', '0'))
+        data['lucro'] = round(valor_com_desconto - valor_total, 2)
 
     except Exception as e:
         data['calculationError'] = str(e)
@@ -316,6 +373,21 @@ def main():
     
     # Calcula valores
     data = calculate_values(data, args.price_kwh, args.discount)
+    
+    # Formata campos numéricos para string BR
+    numeric_fields = [
+        'consumoKwh', 'valorTotal', 'saldoKwh', 'contribuicaoIluminacao',
+        'energiaInjetada', 'precoEnergiaInjetada', 'consumoScee', 'precoEnergiaCompensada',
+        'precoFioB', 'consumoNaoCompensado', 'precoKwhNaoCompensado', 'precoAdcBandeira',
+        'geracaoUltimoCiclo', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'
+    ]
+    
+    for field in numeric_fields:
+        if field in data and data[field] is not None:
+            # Primeiro sanitiza para garantir que é float correto
+            float_val = sanitize_to_float(data[field])
+            # Depois formata para BR
+            data[field] = format_to_br(float_val)
     
     # Adiciona flag de sucesso
     data['success'] = True

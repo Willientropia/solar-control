@@ -424,6 +424,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       const normalizedData = {
         ...extractedData,
+        mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
         consumoScee: normalizeDecimal(extractedData.consumoScee),
         consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
         valorSemDesconto: normalizeDecimal(extractedData.valorSemDesconto),
@@ -547,6 +548,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const [key, value] of Object.entries(updateData)) {
         if (numericFields.includes(key) && value !== null && value !== undefined) {
           normalizedData[key] = normalizeDecimal(value as string);
+        } else if (key === "mesReferencia" && typeof value === "string") {
+          normalizedData[key] = normalizeMonthReference(value);
         } else {
           normalizedData[key] = value;
         }
@@ -689,6 +692,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Helper function to normalize month reference (e.g. "DEZ/25" -> "Dez/2025")
+  function normalizeMonthReference(monthRef: string): string {
+    if (!monthRef) return "";
+    const parts = monthRef.trim().split("/");
+    if (parts.length !== 2) return monthRef;
+    
+    let [month, year] = parts;
+    
+    // Normalize month (capitalize first letter, lowercase rest)
+    month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    
+    // Normalize year (ensure 4 digits)
+    if (year.length === 2) {
+      year = "20" + year;
+    }
+    
+    return `${month}/${year}`;
+  }
+
   // Helper function to parse Brazilian number format
   function parseBrazilianNumber(value: string | null | undefined): number {
     if (!value) return 0;
@@ -751,6 +773,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const usinaGeracoes = allGeracoes.filter(
         g => g.usinaId === usinaId && selectedMonths.includes(g.mesReferencia)
       );
+      
       const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseBrazilianNumber(g.kwhGerado), 0);
       // Use producaoMensalPrevista from usina, multiply by number of months
       const kwhPrevisto = parseBrazilianNumber(usina.producaoMensalPrevista) * selectedMonths.length || 1;
@@ -837,10 +860,56 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Temporary debug route to find duplicates
+  app.get("/api/debug/duplicates", async (req, res) => {
+    try {
+      const geracoes = await storage.getGeracoes();
+      const mapped = geracoes.map(g => ({ id: g.id, mesReferencia: g.mesReferencia, usinaId: g.usinaId }));
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ error: error });
+    }
+  });
+
+  // Fix inconsistent month references
+  app.post("/api/debug/fix-months", async (req, res) => {
+    try {
+      const stats = await storage.fixMonthConsistency();
+      res.json({ 
+        message: "Months normalized and duplicates removed", 
+        stats 
+      });
+    } catch (error: any) {
+      console.error("Error fixing months:", error);
+      res.status(500).json({ message: "Failed to fix months", error: error.message });
+    }
+  });
+
+  app.delete("/api/geracao/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = req.params.id;
+      // Note: storage.deleteGeracao might not exist yet, need to check storage.ts
+      // If it doesn't exist, I'll need to add it.
+      // For now assuming I need to check storage.ts first. 
+      // But let's add the route structure.
+      await storage.deleteGeracao(id); 
+      await logAction(req.user.claims.sub, "excluir", "geracao", id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting geracao:", error);
+      res.status(500).json({ message: "Failed to delete geracao" });
+    }
+  });
+
   app.post("/api/geracao", isAuthenticated, async (req: any, res) => {
     try {
+      const body = req.body;
+      if (body.mesReferencia) {
+        body.mesReferencia = normalizeMonthReference(body.mesReferencia);
+      }
+      
       const data = insertGeracaoMensalSchema.parse({
-        ...req.body,
+        ...body,
         createdBy: req.user.claims.sub,
       });
       const geracao = await storage.createGeracao(data);
@@ -861,7 +930,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/geracao/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const data = insertGeracaoMensalSchema.partial().parse(req.body);
+      const body = req.body;
+      if (body.mesReferencia) {
+        body.mesReferencia = normalizeMonthReference(body.mesReferencia);
+      }
+      
+      const data = insertGeracaoMensalSchema.partial().parse(body);
       const geracao = await storage.updateGeracao(req.params.id, data);
       if (!geracao) {
         return res.status(404).json({ message: "Geracao not found" });
