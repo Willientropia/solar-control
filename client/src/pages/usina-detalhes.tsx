@@ -95,6 +95,7 @@ export default function UsinaDetalhesPage() {
   const [monthFilter, setMonthFilter] = useState<MonthFilter>("all");
   const [editingFatura, setEditingFatura] = useState<(Fatura & { cliente?: Cliente }) | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
 
   const { data: allUsinas = [], isLoading: loadingUsina } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -152,6 +153,33 @@ export default function UsinaDetalhesPage() {
     onError: (error: Error) => {
       toast({
         title: "Erro ao salvar",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const generatePdfMutation = useMutation({
+    mutationFn: async (faturaId: string) => {
+      setGeneratingPdfId(faturaId);
+      const response = await apiRequest("POST", `/api/faturas/${faturaId}/generate-pdf`);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGeneratingPdfId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      toast({
+        title: "PDF gerado!",
+        description: "A fatura foi gerada com sucesso.",
+      });
+      if (data.pdfUrl) {
+        window.open(data.pdfUrl, "_blank");
+      }
+    },
+    onError: (error: Error) => {
+      setGeneratingPdfId(null);
+      toast({
+        title: "Erro ao gerar PDF",
         description: error.message,
         variant: "destructive",
       });
@@ -456,14 +484,30 @@ export default function UsinaDetalhesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEditModal(fatura)}
-                          data-testid={`button-edit-fatura-${fatura.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditModal(fatura)}
+                            data-testid={`button-edit-fatura-${fatura.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => generatePdfMutation.mutate(fatura.id)}
+                            disabled={generatingPdfId === fatura.id}
+                            data-testid={`button-generate-pdf-${fatura.id}`}
+                            title="Gerar fatura PDF"
+                          >
+                            {generatingPdfId === fatura.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

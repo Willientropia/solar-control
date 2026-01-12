@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fatura - Sol Tech Energia</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="page">
+        <!-- Cabeçalho -->
+        <header class="header">
+            <img src="{{ logo_base64 }}" alt="Logo Sol Tech Energia Solar" class="logo">
+            <div class="header-text">
+                Sol Tech Energia Solar<br>
+                Gerando economia para sua fatura de energia
+            </div>
+        </header>
+
+        <!-- Informações do cliente -->
+        <section class="info-cliente">
+            <div class="cliente-detalhes">
+                <p class="cliente-nome">{{ nome_cliente }}</p>
+                <p>
+                    {{ endereco_cliente }}
+                </p>
+            </div>
+            <div class="cliente-unidade">
+                <div class="unidade-box">
+                    <p>Unidade Consumidora</p>
+                </div>
+                <div class="unidade-numero">
+                    <p>{{ unidade_consumidora }}</p>
+                </div>
+            </div>
+        </section>
+        
+
+        <!-- Dados principais -->
+        <section class="dados-principais">
+            <div class="dado">
+                <div class="dado-header amarelo">Conta mês</div>
+                <div class="dado-content">{{ conta_mes }}</div>
+            </div>
+            <div class="dado">
+                <div class="dado-header amarelo">Vencimento</div>
+                <div class="dado-content">{{ vencimento }}</div>
+            </div>
+            <div class="dado">
+                <div class="dado-header laranja">Total a Pagar</div>
+                <div class="dado-content">R$ {{ total_a_pagar }}</div>
+            </div>
+        </section>
+
+        <section class="informacoes-adicionais">
+            <p><strong>Informações para o cliente:</strong></p>
+            
+            {% if tem_desconto %}
+                <p>O valor total de R$ {{ valor_total }} seria pago à concessionária de energia, mas com a geração de energia solar, você pagará apenas R$ {{ total_a_pagar }}. Você economizou R$ {{ desconto }} neste mês.</p>
+                <p>Continue aproveitando os benefícios da energia solar!</p>
+            {% else %}
+                <p>O valor de R$ {{ total_a_pagar }} deverá ser pago até o dia {{ vencimento }}.</p>
+                <p>Obrigado!</p>
+            {% endif %}
+        </section>
+
+        <!-- Tabela de itens da fatura -->
+        <section class="tabela-fatura">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Itens da fatura</th>
+                        <th>Unidade</th>
+                        <th>Quantidade</th>
+                        <th>Preço Unitário</th>
+                        <th>Valor (R$)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Energia Ativa Fornecida</td>
+                        <td>kWh</td>
+                        <td>{{ energia_ativa_quantidade }}</td>
+                        <td>R$ {{ energia_ativa_preco_unitario }}</td>
+                        <td>{{ energia_ativa_valor }}</td>
+                    </tr>
+                    <tr>
+                        <td>Taxa Mínima</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>{{ taxa_minima }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="4"><strong>Total</strong></td>
+                        <td>{{ valor_total }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Resumo financeiro -->
+        {% if tem_desconto %}
+        <section class="resumo-financeiro">
+            <div class="resumo-box vermelho">
+                <p>SEM A SOLAR</p>
+                <p>VOCÊ PAGARIA</p>
+                <p class="valor-riscado">R$ {{ sem_solar }}</p>
+            </div>
+            <div class="resumo-box verde">
+                <p>COM A SOLAR</p>
+                <p>VOCÊ <strong>ECONOMIZOU</strong></p>
+                <p class="valor">R$ {{ desconto }}</p>
+            </div>
+            <div class="resumo-box laranja">
+                <p>TOTAL A PAGAR</p>
+                <p></p>
+                <p class="valor ajuste-alinhamento">R$ {{ total_a_pagar }}</p>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</body>
+</html>
