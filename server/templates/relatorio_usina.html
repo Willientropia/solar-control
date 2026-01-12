@@ -6,7 +6,7 @@
     <title>Relatório Mensal - {{ nome_usina }}</title>
     <style>
         @page {
-            size: A4 portrait;
+            size: A4 landscape;
             margin: 10mm;
         }
         * {
@@ -103,17 +103,22 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 20px;
-            font-size: 11px;
+            font-size: 10px;
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 6px;
             text-align: center;
         }
         th {
             background: #00bfff;
             color: white;
             font-weight: bold;
+            vertical-align: middle;
+        }
+        th.th-lucro {
+            background: #22c55e;
+            color: white;
         }
         tr:nth-child(even) {
             background: #f9f9f9;
@@ -126,6 +131,9 @@
         }
         .font-mono {
             font-family: monospace;
+        }
+        .font-bold {
+            font-weight: bold;
         }
         .text-green {
             color: #22c55e;
@@ -219,33 +227,39 @@
         <table>
             <thead>
                 <tr>
+                    <th class="text-left">Nº Contrato</th>
                     <th class="text-left">Cliente</th>
                     <th>UC</th>
+                    <th class="text-left">Endereço</th>
+                    <th>% Envio</th>
                     <th>Consumo (kWh)</th>
                     <th>Valor c/ Desconto</th>
                     <th>Pago Equatorial</th>
-                    <th class="text-green">Lucro</th>
+                    <th class="th-lucro">Lucro</th>
                     <th>Saldo kWh</th>
                 </tr>
             </thead>
             <tbody>
                 {% for cliente in clientes %}
                 <tr>
+                    <td class="text-left font-mono">{{ cliente.numero_contrato }}</td>
                     <td class="text-left">{{ cliente.nome }}</td>
                     <td class="font-mono">{{ cliente.uc }}</td>
+                    <td class="text-left" style="font-size: 9px;">{{ cliente.endereco }}</td>
+                    <td class="font-mono">{{ cliente.porcentagem_envio }}%</td>
                     <td class="font-mono">{{ cliente.consumo }}</td>
                     <td class="font-mono">R$ {{ cliente.valor_com_desconto }}</td>
                     <td class="font-mono">R$ {{ cliente.valor_equatorial }}</td>
-                    <td class="font-mono text-green">R$ {{ cliente.lucro }}</td>
+                    <td class="font-mono text-green font-bold">R$ {{ cliente.lucro }}</td>
                     <td class="font-mono">{{ cliente.saldo_kwh }}</td>
                 </tr>
                 {% endfor %}
                 <tr class="total-row">
-                    <td class="text-left" colspan="2">TOTAL</td>
+                    <td class="text-right" colspan="5">TOTAL</td>
                     <td class="font-mono">{{ total_consumo }}</td>
                     <td class="font-mono">R$ {{ total_valor_com_desconto }}</td>
                     <td class="font-mono">R$ {{ total_equatorial }}</td>
-                    <td class="font-mono text-green">R$ {{ total_lucro }}</td>
+                    <td class="font-mono text-green font-bold">R$ {{ total_lucro }}</td>
                     <td class="font-mono">{{ total_saldo_kwh }}</td>
                 </tr>
             </tbody>

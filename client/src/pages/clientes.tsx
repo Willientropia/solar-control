@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,9 @@ const clienteFormSchema = z.object({
   usinaId: z.string().min(1, "Usina é obrigatória"),
   desconto: z.string().default("15"),
   isPagante: z.boolean().default(true),
+  numeroContrato: z.string().optional(),
+  valorContratadoKwh: z.string().optional(),
+  porcentagemEnvioCredito: z.string().optional(),
 });
 
 type ClienteFormData = z.infer<typeof clienteFormSchema>;
@@ -78,6 +82,9 @@ export default function ClientesPage() {
       usinaId: "",
       desconto: "15",
       isPagante: true,
+      numeroContrato: "",
+      valorContratadoKwh: "",
+      porcentagemEnvioCredito: "",
     },
   });
 
@@ -125,6 +132,8 @@ export default function ClientesPage() {
     const formattedData = {
       ...data,
       desconto: parseToNumber(data.desconto).toFixed(2),
+      valorContratadoKwh: data.valorContratadoKwh ? parseToNumber(data.valorContratadoKwh).toFixed(2) : null,
+      porcentagemEnvioCredito: data.porcentagemEnvioCredito ? parseToNumber(data.porcentagemEnvioCredito).toFixed(2) : null,
     };
 
     if (editingCliente) {
@@ -144,6 +153,9 @@ export default function ClientesPage() {
       usinaId: cliente.usinaId,
       desconto: formatNumber(cliente.desconto),
       isPagante: cliente.isPagante,
+      numeroContrato: cliente.numeroContrato || "",
+      valorContratadoKwh: cliente.valorContratadoKwh ? formatNumber(cliente.valorContratadoKwh) : "",
+      porcentagemEnvioCredito: cliente.porcentagemEnvioCredito ? formatNumber(cliente.porcentagemEnvioCredito) : "",
     });
     setIsDialogOpen(true);
   };
@@ -250,171 +262,226 @@ export default function ClientesPage() {
                 Novo Cliente
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0">
+              <DialogHeader className="p-6 pb-2">
                 <DialogTitle>
                   {editingCliente ? "Editar Cliente" : "Novo Cliente"}
                 </DialogTitle>
               </DialogHeader>
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(handleSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="nome"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nome do Cliente</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ex: João da Silva"
-                            {...field}
-                            data-testid="input-cliente-nome"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="cpfCnpj"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CPF/CNPJ (opcional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ex: 123.456.789-00"
-                            {...field}
-                            data-testid="input-cliente-cpf"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="unidadeConsumidora"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unidade Consumidora (UC)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ex: 1234567890"
-                            {...field}
-                            data-testid="input-cliente-uc"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="usinaId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Usina</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-cliente-usina">
-                              <SelectValue placeholder="Selecione uma usina" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {usinas.map((usina) => (
-                              <SelectItem key={usina.id} value={usina.id}>
-                                {usina.nome}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="desconto"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Desconto (%)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            placeholder="Ex: 15,00"
-                            {...field}
-                            data-testid="input-cliente-desconto"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="endereco"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Endereço (opcional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ex: Rua das Flores, 123"
-                            {...field}
-                            data-testid="input-cliente-endereco"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="isPagante"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="space-y-0.5">
-                          <FormLabel>Cliente Pagante</FormLabel>
-                          <p className="text-sm text-muted-foreground">
-                            Marque se este cliente paga pelo crédito de energia
-                          </p>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            data-testid="switch-cliente-pagante"
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCloseDialog}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={
-                        createMutation.isPending || updateMutation.isPending
-                      }
-                      data-testid="button-submit-cliente"
-                    >
-                      {editingCliente ? "Salvar" : "Criar"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
+              <ScrollArea className="flex-1 p-6 pt-0">
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit(handleSubmit)}
+                    className="space-y-4"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="nome"
+                        render={({ field }) => (
+                          <FormItem className="col-span-1 md:col-span-2">
+                            <FormLabel>Nome do Cliente</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: João da Silva"
+                                {...field}
+                                data-testid="input-cliente-nome"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="cpfCnpj"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>CPF/CNPJ (opcional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 123.456.789-00"
+                                {...field}
+                                data-testid="input-cliente-cpf"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="unidadeConsumidora"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Unidade Consumidora (UC)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 1234567890"
+                                {...field}
+                                data-testid="input-cliente-uc"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="usinaId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Usina</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-cliente-usina">
+                                  <SelectValue placeholder="Selecione uma usina" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {usinas.map((usina) => (
+                                  <SelectItem key={usina.id} value={usina.id}>
+                                    {usina.nome}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="numeroContrato"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Número do Contrato</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 12345/2023"
+                                {...field}
+                                data-testid="input-cliente-contrato"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="valorContratadoKwh"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Valor Contratado (KWh)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 100,00"
+                                {...field}
+                                data-testid="input-cliente-valor-contratado"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="porcentagemEnvioCredito"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>% Envio Crédito</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 50,00"
+                                {...field}
+                                data-testid="input-cliente-porcentagem-credito"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="desconto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Desconto (%)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="text"
+                                placeholder="Ex: 15,00"
+                                {...field}
+                                data-testid="input-cliente-desconto"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="endereco"
+                        render={({ field }) => (
+                          <FormItem className="col-span-1 md:col-span-2">
+                            <FormLabel>Endereço (opcional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: Rua das Flores, 123"
+                                {...field}
+                                data-testid="input-cliente-endereco"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="isPagante"
+                        render={({ field }) => (
+                          <FormItem className="col-span-1 md:col-span-2 flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel>Cliente Pagante</FormLabel>
+                              <p className="text-sm text-muted-foreground">
+                                Marque se este cliente paga pelo crédito de energia
+                              </p>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid="switch-cliente-pagante"
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCloseDialog}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={
+                          createMutation.isPending || updateMutation.isPending
+                        }
+                        data-testid="button-submit-cliente"
+                      >
+                        {editingCliente ? "Salvar" : "Criar"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </ScrollArea>
             </DialogContent>
           </Dialog>
         }

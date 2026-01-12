@@ -64,8 +64,11 @@ def generate_relatorio_pdf(data, output_path):
         total_saldo_kwh += saldo_kwh
         
         clientes_data.append({
+            'numero_contrato': cliente.get('numeroContrato', '') or '',
             'nome': cliente.get('nome', ''),
             'uc': cliente.get('uc', ''),
+            'endereco': cliente.get('endereco', '') or '',
+            'porcentagem_envio': format_number(cliente.get('porcentagemEnvioCredito', 0)),
             'consumo': format_number(consumo),
             'valor_com_desconto': format_currency(valor_com_desconto),
             'valor_equatorial': format_currency(valor_equatorial),

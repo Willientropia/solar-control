@@ -760,6 +760,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           clientesData.push({
             nome: cliente.nome,
             uc: cliente.unidadeConsumidora,
+            numeroContrato: cliente.numeroContrato,
+            endereco: cliente.endereco,
+            porcentagemEnvioCredito: cliente.porcentagemEnvioCredito,
             consumo: consumoTotal,
             valorComDesconto: valorComDescontoTotal,
             valorTotal: valorTotalSum,
