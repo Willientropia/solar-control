@@ -45,12 +45,14 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     pytesseract \
     pillow
 
+# Copy package files and install production dependencies only
+COPY --from=builder /app/package*.json ./
+RUN npm ci --omit=dev
+
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/server/scripts ./server/scripts
+COPY --from=builder /app/server/templates ./server/templates
 
 # Create uploads directory
 RUN mkdir -p uploads/faturas_geradas uploads/relatorios
