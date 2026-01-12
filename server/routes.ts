@@ -689,6 +689,131 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Generate Usina Report PDF
+  app.post("/api/usinas/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
+    try {
+      const usinaId = req.params.id;
+      const { meses } = req.body; // Array of months like ["Jan/2026", "Fev/2026"]
+      
+      const usina = await storage.getUsina(usinaId);
+      if (!usina) {
+        return res.status(404).json({ message: "Usina not found" });
+      }
+      
+      const allClientes = await storage.getClientes();
+      const usinaClientes = allClientes.filter(c => c.usinaId === usinaId);
+      
+      const allFaturas = await storage.getFaturas();
+      const allGeracoes = await storage.getGeracoes();
+      
+      // Filter by selected months
+      const selectedMonths = meses && meses.length > 0 ? meses : [getCurrentMonthRef()];
+      
+      const clientesData = [];
+      
+      for (const cliente of usinaClientes) {
+        const clienteFaturas = allFaturas.filter(
+          f => f.clienteId === cliente.id && selectedMonths.includes(f.mesReferencia)
+        );
+        
+        if (clienteFaturas.length > 0) {
+          const consumoTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
+          const valorComDescontoTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.valorComDesconto || "0"), 0);
+          const valorTotalSum = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.valorTotal || "0"), 0);
+          const lucroTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0);
+          const saldoKwhTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.saldoKwh || "0"), 0);
+          
+          clientesData.push({
+            nome: cliente.nome,
+            uc: cliente.unidadeConsumidora,
+            consumo: consumoTotal,
+            valorComDesconto: valorComDescontoTotal,
+            valorTotal: valorTotalSum,
+            lucro: lucroTotal,
+            saldoKwh: saldoKwhTotal,
+          });
+        }
+      }
+      
+      // Get generation data for selected months
+      const usinaGeracoes = allGeracoes.filter(
+        g => g.usinaId === usinaId && selectedMonths.includes(g.mesReferencia)
+      );
+      const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseFloat(g.kwhGerado || "0"), 0);
+      // Use producaoMensalPrevista from usina, multiply by number of months
+      const kwhPrevisto = parseFloat(usina.producaoMensalPrevista || "0") * selectedMonths.length || 1;
+      
+      const periodo = selectedMonths.length === 1 
+        ? selectedMonths[0] 
+        : `${selectedMonths[selectedMonths.length - 1]} a ${selectedMonths[0]}`;
+      
+      const reportData = {
+        nomeUsina: usina.nome,
+        ucMatriz: usina.unidadeConsumidora,
+        periodo,
+        kwhGerado,
+        kwhPrevisto,
+        clientes: clientesData,
+      };
+      
+      const outputDir = path.join(process.cwd(), "uploads", "relatorios");
+      await fsPromises.mkdir(outputDir, { recursive: true });
+      
+      const timestamp = Date.now();
+      const outputFilename = `relatorio_${usina.unidadeConsumidora}_${timestamp}.pdf`;
+      const outputPath = path.join(outputDir, outputFilename);
+      
+      const pythonProcess = spawn("python3", [
+        path.join(process.cwd(), "server", "scripts", "generate_relatorio.py"),
+        JSON.stringify(reportData),
+        outputPath,
+      ]);
+      
+      let stdout = "";
+      let stderr = "";
+      
+      pythonProcess.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+      
+      pythonProcess.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+      
+      pythonProcess.on("close", async (code) => {
+        if (code !== 0) {
+          console.error("Report generation failed:", stderr);
+          return res.status(500).json({ message: "Failed to generate report", error: stderr });
+        }
+        
+        try {
+          const result = JSON.parse(stdout);
+          if (result.error) {
+            return res.status(500).json({ message: result.error });
+          }
+          
+          const pdfUrl = `/uploads/relatorios/${outputFilename}`;
+          await logAction(req.user.claims.sub, "gerar_relatorio", "usina", usinaId, { periodo });
+          
+          res.json({ success: true, pdfUrl });
+        } catch (e) {
+          console.error("Error parsing report result:", stdout, e);
+          res.status(500).json({ message: "Failed to parse report generation result" });
+        }
+      });
+    } catch (error: any) {
+      console.error("Error generating report:", error);
+      res.status(500).json({ message: "Failed to generate report", error: error.message });
+    }
+  });
+  
+  // Helper function for current month
+  function getCurrentMonthRef(): string {
+    const now = new Date();
+    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    return `${months[now.getMonth()]}/${now.getFullYear()}`;
+  }
+
   // ==================== GERAÇÃO MENSAL ====================
   app.get("/api/geracao", isAuthenticated, async (req, res) => {
     try {

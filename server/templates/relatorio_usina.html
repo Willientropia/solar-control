@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Mensal - {{ nome_usina }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #fff;
+            color: #333;
+        }
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            background: #fff;
+            padding: 15mm;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 3px solid #f97316;
+            margin-bottom: 20px;
+        }
+        .header .logo {
+            width: 70px;
+            height: auto;
+            margin-right: 20px;
+        }
+        .header-content {
+            flex: 1;
+        }
+        .header-text {
+            font-size: 20px;
+            font-weight: bold;
+            color: #003366;
+        }
+        .header-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .periodo {
+            text-align: right;
+            background: #f97316;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .section-title {
+            background: #003366;
+            color: white;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+            border-radius: 5px;
+        }
+        
+        .info-usina {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 15px;
+        }
+        .info-box {
+            flex: 1;
+            border: 2px solid #f97316;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #003366;
+        }
+        .info-value.destaque {
+            color: #f97316;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 11px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background: #00bfff;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        .text-left {
+            text-align: left;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .font-mono {
+            font-family: monospace;
+        }
+        .text-green {
+            color: #22c55e;
+        }
+        .text-red {
+            color: #ef4444;
+        }
+        
+        .resumo-financeiro {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .resumo-box {
+            flex: 1;
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid transparent;
+        }
+        .resumo-box.receita {
+            border-color: #22c55e;
+            color: #22c55e;
+        }
+        .resumo-box.despesa {
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+        .resumo-box.lucro {
+            border-color: #f97316;
+            background: #f97316;
+            color: white;
+        }
+        .resumo-label {
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .resumo-valor {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #ddd;
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+        }
+        
+        .total-row {
+            font-weight: bold;
+            background: #e0f2fe !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="header">
+            <img src="{{ logo_base64 }}" alt="Logo Sol Tech Energia Solar" class="logo">
+            <div class="header-content">
+                <div class="header-text">Sol Tech Energia Solar</div>
+                <div class="header-subtitle">Relatório Mensal de Geração e Distribuição</div>
+            </div>
+            <div class="periodo">{{ periodo }}</div>
+        </header>
+
+        <div class="section-title">DADOS DA USINA</div>
+        <div class="info-usina">
+            <div class="info-box">
+                <div class="info-label">Nome da Usina</div>
+                <div class="info-value">{{ nome_usina }}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">UC Matriz</div>
+                <div class="info-value font-mono">{{ uc_matriz }}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Geração do Período</div>
+                <div class="info-value destaque">{{ kwh_gerado }} kWh</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">% do Previsto</div>
+                <div class="info-value">{{ percentual_gerado }}%</div>
+            </div>
+        </div>
+
+        <div class="section-title">DETALHAMENTO POR UNIDADE CONSUMIDORA</div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="text-left">Cliente</th>
+                    <th>UC</th>
+                    <th>Consumo (kWh)</th>
+                    <th>Valor c/ Desconto</th>
+                    <th>Pago Equatorial</th>
+                    <th class="text-green">Lucro</th>
+                    <th>Saldo kWh</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cliente in clientes %}
+                <tr>
+                    <td class="text-left">{{ cliente.nome }}</td>
+                    <td class="font-mono">{{ cliente.uc }}</td>
+                    <td class="font-mono">{{ cliente.consumo }}</td>
+                    <td class="font-mono">R$ {{ cliente.valor_com_desconto }}</td>
+                    <td class="font-mono">R$ {{ cliente.valor_equatorial }}</td>
+                    <td class="font-mono text-green">R$ {{ cliente.lucro }}</td>
+                    <td class="font-mono">{{ cliente.saldo_kwh }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total-row">
+                    <td class="text-left" colspan="2">TOTAL</td>
+                    <td class="font-mono">{{ total_consumo }}</td>
+                    <td class="font-mono">R$ {{ total_valor_com_desconto }}</td>
+                    <td class="font-mono">R$ {{ total_equatorial }}</td>
+                    <td class="font-mono text-green">R$ {{ total_lucro }}</td>
+                    <td class="font-mono">{{ total_saldo_kwh }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">RESUMO FINANCEIRO</div>
+        <div class="resumo-financeiro">
+            <div class="resumo-box receita">
+                <div class="resumo-label">RECEITA TOTAL</div>
+                <div class="resumo-valor">R$ {{ total_valor_com_desconto }}</div>
+            </div>
+            <div class="resumo-box despesa">
+                <div class="resumo-label">CUSTO EQUATORIAL</div>
+                <div class="resumo-valor">R$ {{ total_equatorial }}</div>
+            </div>
+            <div class="resumo-box lucro">
+                <div class="resumo-label">LUCRO LÍQUIDO</div>
+                <div class="resumo-valor">R$ {{ total_lucro }}</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Relatório gerado automaticamente pelo sistema Sol Tech Energia Solar</p>
+            <p>Data de emissão: {{ data_emissao }}</p>
+        </div>
+    </div>
+</body>
+</html>

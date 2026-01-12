@@ -96,6 +96,8 @@ export default function UsinaDetalhesPage() {
   const [editingFatura, setEditingFatura] = useState<(Fatura & { cliente?: Cliente }) | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+  const [selectedReportMonths, setSelectedReportMonths] = useState<string[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const { data: allUsinas = [], isLoading: loadingUsina } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -186,6 +188,45 @@ export default function UsinaDetalhesPage() {
     },
   });
   
+  const generateReportMutation = useMutation({
+    mutationFn: async (meses: string[]) => {
+      setGeneratingReport(true);
+      const response = await apiRequest("POST", `/api/usinas/${params.id}/generate-relatorio`, { meses });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGeneratingReport(false);
+      toast({
+        title: "Relatório gerado!",
+        description: "O relatório foi gerado com sucesso.",
+      });
+      if (data.pdfUrl) {
+        window.open(data.pdfUrl, "_blank");
+      }
+    },
+    onError: (error: Error) => {
+      setGeneratingReport(false);
+      toast({
+        title: "Erro ao gerar relatório",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const toggleReportMonth = (month: string) => {
+    setSelectedReportMonths((prev) => 
+      prev.includes(month) 
+        ? prev.filter((m) => m !== month)
+        : [...prev, month]
+    );
+  };
+  
+  const handleGenerateReport = () => {
+    const meses = selectedReportMonths.length > 0 ? selectedReportMonths : [currentMonth];
+    generateReportMutation.mutate(meses);
+  };
+  
   const openEditModal = (fatura: Fatura) => {
     setEditingFatura(fatura);
     setEditFormData({
@@ -213,6 +254,9 @@ export default function UsinaDetalhesPage() {
     updateFaturaMutation.mutate({ id: editingFatura.id, updates: editFormData });
   };
 
+  // Get available months for report selection
+  const availableMonths = getAvailableMonths(allUsinaFaturas);
+  
   // Calculate monthly status
   const faturasDoMes = faturas.filter((f) => f.mesReferencia === currentMonth);
   const clientesComFatura = new Set(faturasDoMes.map((f) => f.clienteId));
@@ -649,7 +693,37 @@ export default function UsinaDetalhesPage() {
         </TabsContent>
 
         <TabsContent value="relatorios" className="space-y-4">
-          <h3 className="text-lg font-medium">Resumo Financeiro</h3>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h3 className="text-lg font-medium">Resumo Financeiro</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Período:</span>
+              <div className="flex flex-wrap gap-1">
+                {availableMonths.map((month) => (
+                  <Badge 
+                    key={month}
+                    variant={selectedReportMonths.includes(month) ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => toggleReportMonth(month)}
+                    data-testid={`badge-month-${month.replace("/", "-")}`}
+                  >
+                    {month}
+                  </Badge>
+                ))}
+              </div>
+              <Button 
+                onClick={handleGenerateReport}
+                disabled={generatingReport}
+                data-testid="button-generate-report"
+              >
+                {generatingReport ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileDown className="h-4 w-4 mr-2" />
+                )}
+                Gerar PDF
+              </Button>
+            </div>
+          </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
