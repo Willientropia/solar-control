@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
@@ -69,12 +68,12 @@ interface ExtractedData {
   cicloGeracao?: string;
   ucGeradora?: string;
   geracaoUltimoCiclo?: string;
-  valorSemDesconto?: number;
-  valorComDesconto?: number;
-  economia?: number;
-  lucro?: number;
-  precoKwhUsado?: number;
-  descontoUsado?: number;
+  valorSemDesconto?: number | string;
+  valorComDesconto?: number | string;
+  economia?: number | string;
+  lucro?: number | string;
+  precoKwhUsado?: number | string;
+  descontoUsado?: number | string;
 }
 
 interface UploadedFile {
@@ -84,36 +83,42 @@ interface UploadedFile {
   extractedData?: ExtractedData;
 }
 
-const FIELD_LABELS: Record<string, string> = {
-  cpfCnpj: "CPF/CNPJ",
-  nomeCliente: "Nome do Cliente",
-  endereco: "Endereço",
-  unidadeConsumidora: "Unidade Consumidora",
-  mesReferencia: "Mês de Referência",
-  dataVencimento: "Data de Vencimento",
-  leituraAnterior: "Leitura Anterior",
-  leituraAtual: "Leitura Atual",
-  quantidadeDias: "Quantidade de Dias",
-  consumoKwh: "Consumo Total (kWh)",
-  consumoScee: "Consumo SCEE (kWh)",
-  consumoNaoCompensado: "Consumo Não Compensado (kWh)",
-  energiaInjetada: "Energia Injetada (kWh)",
-  precoEnergiaInjetada: "Preço Energia Injetada (R$)",
-  precoEnergiaCompensada: "Preço Energia Compensada (R$)",
-  precoKwhNaoCompensado: "Preço kWh Não Compensado (R$)",
-  precoFioB: "Preço Fio B (R$)",
-  precoAdcBandeira: "Preço ADC Bandeira (R$)",
-  contribuicaoIluminacao: "Contribuição Iluminação Pública (R$)",
-  valorTotal: "Valor Total Fatura (R$)",
-  saldoKwh: "Saldo (kWh)",
-  cicloGeracao: "Ciclo de Geração",
-  ucGeradora: "UC Geradora",
-  geracaoUltimoCiclo: "Geração Último Ciclo (kWh)",
-  valorSemDesconto: "Valor Sem Desconto (R$)",
-  valorComDesconto: "Valor Com Desconto (R$)",
-  economia: "Economia (R$)",
-  lucro: "Lucro Estimado (R$)",
-};
+const FIELD_CONFIG: { key: keyof ExtractedData; label: string; type: "text" | "number" }[] = [
+  { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" },
+  { key: "nomeCliente", label: "Nome do Cliente", type: "text" },
+  { key: "endereco", label: "Endereço", type: "text" },
+  { key: "unidadeConsumidora", label: "Unidade Consumidora", type: "text" },
+  { key: "mesReferencia", label: "Mês de Referência", type: "text" },
+  { key: "dataVencimento", label: "Data de Vencimento", type: "text" },
+  { key: "leituraAnterior", label: "Leitura Anterior", type: "text" },
+  { key: "leituraAtual", label: "Leitura Atual", type: "text" },
+  { key: "quantidadeDias", label: "Quantidade de Dias", type: "text" },
+  { key: "consumoKwh", label: "Consumo Total (kWh)", type: "text" },
+  { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" },
+  { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" },
+  { key: "energiaInjetada", label: "Energia Injetada (kWh)", type: "text" },
+  { key: "precoEnergiaInjetada", label: "Preço Energia Injetada (R$)", type: "text" },
+  { key: "precoEnergiaCompensada", label: "Preço Energia Compensada (R$)", type: "text" },
+  { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado (R$)", type: "text" },
+  { key: "precoFioB", label: "Preço Fio B (R$)", type: "text" },
+  { key: "precoAdcBandeira", label: "Preço ADC Bandeira (R$)", type: "text" },
+  { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública (R$)", type: "text" },
+  { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" },
+  { key: "saldoKwh", label: "Saldo (kWh)", type: "text" },
+  { key: "cicloGeracao", label: "Ciclo de Geração", type: "text" },
+  { key: "ucGeradora", label: "UC Geradora", type: "text" },
+  { key: "geracaoUltimoCiclo", label: "Geração Último Ciclo (kWh)", type: "text" },
+  { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text" },
+  { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text" },
+  { key: "economia", label: "Economia (R$)", type: "text" },
+  { key: "lucro", label: "Lucro Estimado (R$)", type: "text" },
+];
+
+function normalizeDecimal(value: string | number | undefined | null): string {
+  if (value === null || value === undefined || value === "") return "";
+  const strValue = String(value);
+  return strValue.replace(/\./g, "").replace(",", ".");
+}
 
 export default function FaturasUploadPage() {
   const [, navigate] = useLocation();
@@ -123,7 +128,8 @@ export default function FaturasUploadPage() {
   const [precoKwh, setPrecoKwh] = useState<string>("0.85");
   const [isDragging, setIsDragging] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [currentExtractedData, setCurrentExtractedData] = useState<ExtractedData | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [pdfUrl, setPdfUrl] = useState<string>("");
   const [selectedClienteId, setSelectedClienteId] = useState<string>("");
 
   const { data: usinas = [] } = useQuery<Usina[]>({
@@ -158,9 +164,14 @@ export default function FaturasUploadPage() {
       return response.json();
     },
     onSuccess: (data: ExtractedData) => {
-      setCurrentExtractedData(data);
+      const initialFormData: Record<string, string> = {};
+      FIELD_CONFIG.forEach(({ key }) => {
+        const value = data[key];
+        initialFormData[key] = value !== null && value !== undefined ? String(value) : "";
+      });
+      setFormData(initialFormData);
+      setPdfUrl(data.fileUrl || "");
       
-      // Try to match client by UC
       const matchedCliente = filteredClientes.find(
         (c) => c.unidadeConsumidora === data.unidadeConsumidora
       );
@@ -178,12 +189,36 @@ export default function FaturasUploadPage() {
         description: error.message,
         variant: "destructive",
       });
+      setFiles((prev) =>
+        prev.map((f) => ({ ...f, status: "error" as const }))
+      );
     },
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async (data: { extractedData: ExtractedData; clienteId: string }) => {
-      const response = await apiRequest("POST", "/api/faturas/confirm", data);
+    mutationFn: async (data: { extractedData: Record<string, string>; clienteId: string; fileUrl: string }) => {
+      const normalizedData: Record<string, string> = {};
+      
+      const numericFields = [
+        "consumoKwh", "consumoScee", "consumoNaoCompensado", "energiaInjetada",
+        "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhNaoCompensado",
+        "precoFioB", "precoAdcBandeira", "contribuicaoIluminacao", "valorTotal",
+        "saldoKwh", "geracaoUltimoCiclo", "valorSemDesconto", "valorComDesconto",
+        "economia", "lucro", "leituraAnterior", "leituraAtual", "quantidadeDias"
+      ];
+
+      Object.entries(data.extractedData).forEach(([key, value]) => {
+        if (numericFields.includes(key)) {
+          normalizedData[key] = normalizeDecimal(value);
+        } else {
+          normalizedData[key] = value;
+        }
+      });
+
+      const response = await apiRequest("POST", "/api/faturas/confirm", {
+        extractedData: { ...normalizedData, fileUrl: data.fileUrl },
+        clienteId: data.clienteId,
+      });
       return response.json();
     },
     onSuccess: () => {
@@ -193,7 +228,8 @@ export default function FaturasUploadPage() {
         description: "Os dados foram salvos com sucesso.",
       });
       setShowVerificationModal(false);
-      setCurrentExtractedData(null);
+      setFormData({});
+      setPdfUrl("");
       setFiles([]);
     },
     onError: (error: Error) => {
@@ -262,8 +298,12 @@ export default function FaturasUploadPage() {
     extractMutation.mutate(files[0].file);
   };
 
+  const handleFieldChange = (key: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleConfirm = () => {
-    if (!currentExtractedData || !selectedClienteId) {
+    if (!selectedClienteId) {
       toast({
         title: "Selecione o cliente",
         description: "Escolha o cliente para vincular esta fatura.",
@@ -273,19 +313,10 @@ export default function FaturasUploadPage() {
     }
 
     confirmMutation.mutate({
-      extractedData: currentExtractedData,
+      extractedData: formData,
       clienteId: selectedClienteId,
+      fileUrl: pdfUrl,
     });
-  };
-
-  const renderFieldValue = (key: string, value: any) => {
-    if (value === null || value === undefined || value === "") {
-      return <Badge variant="outline" className="text-muted-foreground">Não encontrado</Badge>;
-    }
-    if (typeof value === "number") {
-      return <span className="font-mono">{value.toFixed(2)}</span>;
-    }
-    return <span className="font-mono">{value}</span>;
   };
 
   return (
@@ -448,85 +479,80 @@ export default function FaturasUploadPage() {
       </div>
 
       <Dialog open={showVerificationModal} onOpenChange={setShowVerificationModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-6xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Verificar Dados Extraídos</DialogTitle>
             <DialogDescription>
-              Confira os dados extraídos da fatura antes de salvar.
+              Confira e edite os dados extraídos da fatura antes de salvar.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Vincular ao Cliente</Label>
-                <Select
-                  value={selectedClienteId}
-                  onValueChange={setSelectedClienteId}
-                >
-                  <SelectTrigger data-testid="select-cliente-fatura">
-                    <SelectValue placeholder="Selecione o cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredClientes.map((cliente) => (
-                      <SelectItem key={cliente.id} value={cliente.id}>
-                        {cliente.nome} (UC: {cliente.unidadeConsumidora})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {currentExtractedData?.unidadeConsumidora && (
-                  <p className="text-xs text-muted-foreground">
-                    UC detectada na fatura: <strong>{currentExtractedData.unidadeConsumidora}</strong>
-                  </p>
-                )}
-              </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ScrollArea className="h-[550px] pr-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Vincular ao Cliente</Label>
+                  <Select
+                    value={selectedClienteId}
+                    onValueChange={setSelectedClienteId}
+                  >
+                    <SelectTrigger data-testid="select-cliente-fatura">
+                      <SelectValue placeholder="Selecione o cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredClientes.map((cliente) => (
+                        <SelectItem key={cliente.id} value={cliente.id}>
+                          {cliente.nome} (UC: {cliente.unidadeConsumidora})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              {currentExtractedData?.fileUrl && (
-                <div className="border rounded-lg overflow-hidden h-[400px]">
+                <Separator />
+
+                <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                  Dados Extraídos
+                </h4>
+
+                <div className="grid gap-3">
+                  {FIELD_CONFIG.map(({ key, label }) => (
+                    <div key={key} className="space-y-1">
+                      <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
+                        {label}
+                      </Label>
+                      <Input
+                        id={`field-${key}`}
+                        value={formData[key] || ""}
+                        onChange={(e) => handleFieldChange(key, e.target.value)}
+                        placeholder={`Informe ${label.toLowerCase()}`}
+                        className="h-8 text-sm"
+                        data-testid={`input-field-${key}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </ScrollArea>
+
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                Visualização do PDF
+              </h4>
+              {pdfUrl ? (
+                <div className="border rounded-lg overflow-hidden h-[520px]">
                   <iframe
-                    src={currentExtractedData.fileUrl}
+                    src={pdfUrl}
                     className="w-full h-full"
                     title="PDF Preview"
                   />
                 </div>
+              ) : (
+                <div className="border rounded-lg h-[520px] flex items-center justify-center bg-muted/50">
+                  <p className="text-muted-foreground">PDF não disponível</p>
+                </div>
               )}
             </div>
-
-            <ScrollArea className="h-[500px] pr-4">
-              <div className="space-y-3">
-                <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-                  Dados Identificados
-                </h4>
-                <Separator />
-                
-                {currentExtractedData && Object.entries(FIELD_LABELS).map(([key, label]) => {
-                  const value = (currentExtractedData as any)[key];
-                  return (
-                    <div key={key} className="flex justify-between items-center py-1">
-                      <span className="text-sm text-muted-foreground">{label}</span>
-                      {renderFieldValue(key, value)}
-                    </div>
-                  );
-                })}
-
-                {currentExtractedData?.extractionErrors && currentExtractedData.extractionErrors.length > 0 && (
-                  <>
-                    <Separator className="my-4" />
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm text-destructive uppercase tracking-wide">
-                        Campos não encontrados
-                      </h4>
-                      {currentExtractedData.extractionErrors.map((error, idx) => (
-                        <Badge key={idx} variant="destructive" className="mr-1">
-                          {error}
-                        </Badge>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </ScrollArea>
           </div>
 
           <DialogFooter>
@@ -539,6 +565,7 @@ export default function FaturasUploadPage() {
             <Button
               onClick={handleConfirm}
               disabled={!selectedClienteId || confirmMutation.isPending}
+              data-testid="button-confirm-save"
             >
               {confirmMutation.isPending ? (
                 <>

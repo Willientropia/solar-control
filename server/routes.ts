@@ -177,6 +177,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = insertUsinaSchema.parse(req.body);
       const usina = await storage.createUsina(data);
       await logAction(req.user.claims.sub, "criar", "usina", usina.id, { nome: usina.nome });
+      
+      // Auto-create the usina's own UC as a non-paying client (UC matriz)
+      const clienteMatriz = await storage.createCliente({
+        nome: `${usina.nome} - UC Matriz`,
+        unidadeConsumidora: usina.unidadeConsumidora,
+        usinaId: usina.id,
+        desconto: usina.descontoPadrao,
+        isPagante: false,
+      });
+      await logAction(req.user.claims.sub, "criar", "cliente", clienteMatriz.id, { 
+        nome: clienteMatriz.nome, 
+        autoCreated: true,
+        usinaId: usina.id 
+      });
+      
       res.status(201).json(usina);
     } catch (error) {
       console.error("Error creating usina:", error);
@@ -353,6 +368,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Helper to normalize Brazilian decimal format to standard
+  function normalizeDecimal(value: string | number | null | undefined): string {
+    if (value === null || value === undefined || value === "") return "0";
+    
+    // If already a number, just return as string
+    if (typeof value === "number") {
+      return isNaN(value) ? "0" : value.toString();
+    }
+    
+    const strValue = String(value).trim();
+    
+    // Check if it's Brazilian format: has comma as decimal separator
+    // Brazilian: "1.234,56" or "1234,56" 
+    // Standard: "1234.56" or "0.85"
+    const hasComma = strValue.includes(",");
+    const hasDot = strValue.includes(".");
+    
+    let normalized: string;
+    
+    if (hasComma) {
+      // Brazilian format: remove dots (thousands), replace comma with dot (decimal)
+      normalized = strValue.replace(/\./g, "").replace(",", ".");
+    } else {
+      // Already standard format or no separators
+      normalized = strValue;
+    }
+    
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? "0" : parsed.toString();
+  }
+
   // Confirm and save extracted fatura
   app.post("/api/faturas/confirm", isAuthenticated, async (req: any, res) => {
     try {
@@ -368,21 +414,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "Cliente not found" });
       }
 
+      // Normalize all numeric fields from Brazilian format
+      const normalizedData = {
+        ...extractedData,
+        consumoScee: normalizeDecimal(extractedData.consumoScee),
+        consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
+        valorSemDesconto: normalizeDecimal(extractedData.valorSemDesconto),
+        valorComDesconto: normalizeDecimal(extractedData.valorComDesconto),
+        economia: normalizeDecimal(extractedData.economia),
+        lucro: normalizeDecimal(extractedData.lucro),
+        saldoKwh: normalizeDecimal(extractedData.saldoKwh),
+        consumoKwh: normalizeDecimal(extractedData.consumoKwh),
+        energiaInjetada: normalizeDecimal(extractedData.energiaInjetada),
+        precoEnergiaInjetada: normalizeDecimal(extractedData.precoEnergiaInjetada),
+        precoEnergiaCompensada: normalizeDecimal(extractedData.precoEnergiaCompensada),
+        precoKwhNaoCompensado: normalizeDecimal(extractedData.precoKwhNaoCompensado),
+        precoFioB: normalizeDecimal(extractedData.precoFioB),
+        precoAdcBandeira: normalizeDecimal(extractedData.precoAdcBandeira),
+        contribuicaoIluminacao: normalizeDecimal(extractedData.contribuicaoIluminacao),
+        valorTotal: normalizeDecimal(extractedData.valorTotal),
+        geracaoUltimoCiclo: normalizeDecimal(extractedData.geracaoUltimoCiclo),
+      };
+
       // Create the fatura with extracted data
       const fatura = await storage.createFatura({
         clienteId,
-        mesReferencia: extractedData.mesReferencia || "",
-        consumoScee: extractedData.consumoScee || "0",
-        consumoNaoCompensado: extractedData.consumoNaoCompensado || "0",
-        precoKwh: extractedData.precoKwhUsado?.toString() || "0.85",
-        valorSemDesconto: extractedData.valorSemDesconto?.toString() || "0",
-        valorComDesconto: extractedData.valorComDesconto?.toString() || "0",
-        economia: extractedData.economia?.toString() || "0",
-        lucro: extractedData.lucro?.toString() || "0",
-        saldoKwh: extractedData.saldoKwh || "0",
+        mesReferencia: normalizedData.mesReferencia || "",
+        consumoScee: normalizedData.consumoScee,
+        consumoNaoCompensado: normalizedData.consumoNaoCompensado,
+        precoKwh: normalizeDecimal(extractedData.precoKwhUsado) || "0.85",
+        valorSemDesconto: normalizedData.valorSemDesconto,
+        valorComDesconto: normalizedData.valorComDesconto,
+        economia: normalizedData.economia,
+        lucro: normalizedData.lucro,
+        saldoKwh: normalizedData.saldoKwh,
         status: "pendente",
         createdBy: req.user.claims.sub,
-        dadosExtraidos: extractedData,
+        dadosExtraidos: normalizedData,
       });
 
       await logAction(req.user.claims.sub, "criar", "fatura", fatura.id, {
