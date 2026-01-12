@@ -689,6 +689,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Helper function to parse Brazilian number format
+  function parseBrazilianNumber(value: string | null | undefined): number {
+    if (!value) return 0;
+    // Handle both formats: "1.234,56" (BR) and "1234.56" (US)
+    const str = value.toString().trim();
+    if (str.includes(",")) {
+      // Brazilian format: remove dots (thousand sep), replace comma with dot
+      return parseFloat(str.replace(/\./g, "").replace(",", ".")) || 0;
+    }
+    return parseFloat(str) || 0;
+  }
+
   // Generate Usina Report PDF
   app.post("/api/usinas/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
     try {
@@ -717,11 +729,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
         
         if (clienteFaturas.length > 0) {
-          const consumoTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
-          const valorComDescontoTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.valorComDesconto || "0"), 0);
-          const valorTotalSum = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.valorTotal || "0"), 0);
-          const lucroTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0);
-          const saldoKwhTotal = clienteFaturas.reduce((acc, f) => acc + parseFloat(f.saldoKwh || "0"), 0);
+          const consumoTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.consumoScee), 0);
+          const valorComDescontoTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.valorComDesconto), 0);
+          const valorTotalSum = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.valorTotal), 0);
+          const lucroTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.lucro), 0);
+          const saldoKwhTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.saldoKwh), 0);
           
           clientesData.push({
             nome: cliente.nome,
@@ -739,9 +751,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const usinaGeracoes = allGeracoes.filter(
         g => g.usinaId === usinaId && selectedMonths.includes(g.mesReferencia)
       );
-      const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseFloat(g.kwhGerado || "0"), 0);
+      const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseBrazilianNumber(g.kwhGerado), 0);
       // Use producaoMensalPrevista from usina, multiply by number of months
-      const kwhPrevisto = parseFloat(usina.producaoMensalPrevista || "0") * selectedMonths.length || 1;
+      const kwhPrevisto = parseBrazilianNumber(usina.producaoMensalPrevista) * selectedMonths.length || 1;
       
       const periodo = selectedMonths.length === 1 
         ? selectedMonths[0] 

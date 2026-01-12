@@ -3,16 +3,10 @@ import sys
 import json
 import os
 import base64
-import locale
 from datetime import datetime
 
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
-
-try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except:
-    locale.setlocale(locale.LC_ALL, '')
 
 template_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
 env = Environment(loader=FileSystemLoader(template_dir))
@@ -22,16 +16,24 @@ def logo_to_base64(file_path):
         return f"data:image/png;base64,{base64.b64encode(image_file.read()).decode()}"
 
 def format_currency(value):
+    """Format number as Brazilian currency (1.234,56)"""
     try:
         num = float(value) if value else 0
-        return locale.format_string('%.2f', num, grouping=True)
+        formatted = f"{num:,.2f}"
+        # Swap . and , for Brazilian format
+        formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+        return formatted
     except:
         return "0,00"
 
 def format_number(value):
+    """Format number as Brazilian number (1.234,56)"""
     try:
         num = float(value) if value else 0
-        return locale.format_string('%.2f', num, grouping=True)
+        formatted = f"{num:,.2f}"
+        # Swap . and , for Brazilian format
+        formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+        return formatted
     except:
         return "0"
 
