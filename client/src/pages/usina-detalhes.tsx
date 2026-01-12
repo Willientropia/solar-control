@@ -52,9 +52,11 @@ export default function UsinaDetalhesPage() {
   const [, navigate] = useLocation();
   const currentMonth = getCurrentMonthRef();
 
-  const { data: usina, isLoading: loadingUsina } = useQuery<Usina>({
-    queryKey: ["/api/usinas", params.id],
+  const { data: allUsinas = [], isLoading: loadingUsina } = useQuery<Usina[]>({
+    queryKey: ["/api/usinas"],
   });
+
+  const usina = allUsinas.find((u) => u.id === params.id);
 
   const { data: allClientes = [], isLoading: loadingClientes } = useQuery<Cliente[]>({
     queryKey: ["/api/clientes"],
