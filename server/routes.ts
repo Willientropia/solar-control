@@ -8,6 +8,7 @@ import multer from "multer";
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
+import fsPromises from "fs/promises";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -415,14 +416,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Normalize all numeric fields from Brazilian format
+      const valorComDesconto = parseFloat(normalizeDecimal(extractedData.valorComDesconto)) || 0;
+      const valorTotal = parseFloat(normalizeDecimal(extractedData.valorTotal)) || 0;
+      
+      // Lucro = valorComDesconto - valorTotal (o que o cliente paga à empresa menos o que vai para a concessionária)
+      const lucroCalculado = valorComDesconto - valorTotal;
+      
       const normalizedData = {
         ...extractedData,
         consumoScee: normalizeDecimal(extractedData.consumoScee),
         consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
         valorSemDesconto: normalizeDecimal(extractedData.valorSemDesconto),
-        valorComDesconto: normalizeDecimal(extractedData.valorComDesconto),
+        valorComDesconto: valorComDesconto.toString(),
         economia: normalizeDecimal(extractedData.economia),
-        lucro: normalizeDecimal(extractedData.lucro),
+        lucro: lucroCalculado.toFixed(2),
         saldoKwh: normalizeDecimal(extractedData.saldoKwh),
         consumoKwh: normalizeDecimal(extractedData.consumoKwh),
         energiaInjetada: normalizeDecimal(extractedData.energiaInjetada),
@@ -432,22 +439,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         precoFioB: normalizeDecimal(extractedData.precoFioB),
         precoAdcBandeira: normalizeDecimal(extractedData.precoAdcBandeira),
         contribuicaoIluminacao: normalizeDecimal(extractedData.contribuicaoIluminacao),
-        valorTotal: normalizeDecimal(extractedData.valorTotal),
+        valorTotal: valorTotal.toString(),
         geracaoUltimoCiclo: normalizeDecimal(extractedData.geracaoUltimoCiclo),
+        dataVencimento: extractedData.dataVencimento || "",
       };
 
       // Create the fatura with extracted data
       const fatura = await storage.createFatura({
         clienteId,
         mesReferencia: normalizedData.mesReferencia || "",
+        dataVencimento: normalizedData.dataVencimento,
         consumoScee: normalizedData.consumoScee,
         consumoNaoCompensado: normalizedData.consumoNaoCompensado,
+        energiaInjetada: normalizedData.energiaInjetada,
+        saldoKwh: normalizedData.saldoKwh,
+        contribuicaoIluminacao: normalizedData.contribuicaoIluminacao,
         precoKwh: normalizeDecimal(extractedData.precoKwhUsado) || "0.85",
+        precoAdcBandeira: normalizedData.precoAdcBandeira,
+        precoFioB: normalizedData.precoFioB,
+        valorTotal: normalizedData.valorTotal,
         valorSemDesconto: normalizedData.valorSemDesconto,
         valorComDesconto: normalizedData.valorComDesconto,
         economia: normalizedData.economia,
         lucro: normalizedData.lucro,
-        saldoKwh: normalizedData.saldoKwh,
         status: "pendente",
         createdBy: req.user.claims.sub,
         dadosExtraidos: normalizedData,
@@ -516,6 +530,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Full edit of a fatura
+  app.patch("/api/faturas/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const updateData = req.body;
+      
+      // Normalize numeric fields if present
+      const numericFields = [
+        "consumoScee", "consumoNaoCompensado", "energiaInjetada", "saldoKwh",
+        "contribuicaoIluminacao", "precoKwh", "precoAdcBandeira", "precoFioB",
+        "valorTotal", "valorSemDesconto", "valorComDesconto", "economia", "lucro"
+      ];
+      
+      const normalizedData: any = {};
+      for (const [key, value] of Object.entries(updateData)) {
+        if (numericFields.includes(key) && value !== null && value !== undefined) {
+          normalizedData[key] = normalizeDecimal(value as string);
+        } else {
+          normalizedData[key] = value;
+        }
+      }
+      
+      // Recalculate lucro if valorComDesconto or valorTotal changed
+      if (normalizedData.valorComDesconto !== undefined || normalizedData.valorTotal !== undefined) {
+        const existingFatura = await storage.getFatura(faturaId);
+        if (existingFatura) {
+          const valorComDesconto = parseFloat(normalizedData.valorComDesconto ?? existingFatura.valorComDesconto ?? "0");
+          const valorTotal = parseFloat(normalizedData.valorTotal ?? existingFatura.valorTotal ?? "0");
+          normalizedData.lucro = (valorComDesconto - valorTotal).toFixed(2);
+        }
+      }
+      
+      const fatura = await storage.updateFatura(faturaId, normalizedData);
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+      
+      await logAction(req.user.claims.sub, "editar", "fatura", fatura.id, { fields: Object.keys(updateData) });
+      res.json(fatura);
+    } catch (error) {
+      console.error("Error updating fatura:", error);
+      res.status(500).json({ message: "Failed to update fatura" });
+    }
+  });
+
   app.patch("/api/faturas/:id/status", isAuthenticated, async (req: any, res) => {
     try {
       const { status } = req.body;
@@ -544,6 +603,89 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error deleting fatura:", error);
       res.status(500).json({ message: "Failed to delete fatura" });
+    }
+  });
+
+  // Generate PDF invoice
+  app.post("/api/faturas/:id/generate-pdf", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+      
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+      
+      const cliente = await storage.getCliente(fatura.clienteId);
+      if (!cliente) {
+        return res.status(404).json({ message: "Cliente not found" });
+      }
+      
+      const { spawn } = await import("child_process");
+      const outputDir = path.join(process.cwd(), "uploads", "faturas_geradas");
+      await fsPromises.mkdir(outputDir, { recursive: true });
+      
+      const outputFilename = `fatura_${cliente.unidadeConsumidora}_${fatura.mesReferencia.replace("/", "_")}.pdf`;
+      const outputPath = path.join(outputDir, outputFilename);
+      
+      const pdfData = {
+        nomeCliente: cliente.nome,
+        enderecoCliente: cliente.endereco || "",
+        unidadeConsumidora: cliente.unidadeConsumidora,
+        mesReferencia: fatura.mesReferencia,
+        dataVencimento: fatura.dataVencimento || "",
+        consumoScee: fatura.consumoScee,
+        consumoNaoCompensado: fatura.consumoNaoCompensado,
+        valorTotal: fatura.valorTotal,
+        valorSemDesconto: fatura.valorSemDesconto,
+        valorComDesconto: fatura.valorComDesconto,
+        economia: fatura.economia,
+        contribuicaoIluminacao: fatura.contribuicaoIluminacao,
+        precoKwh: fatura.precoKwh,
+      };
+      
+      const pythonProcess = spawn("python3", [
+        path.join(process.cwd(), "server", "scripts", "generate_pdf.py"),
+        JSON.stringify(pdfData),
+        outputPath,
+      ]);
+      
+      let stdout = "";
+      let stderr = "";
+      
+      pythonProcess.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+      
+      pythonProcess.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+      
+      pythonProcess.on("close", async (code) => {
+        if (code !== 0) {
+          console.error("PDF generation failed:", stderr);
+          return res.status(500).json({ message: "Failed to generate PDF", error: stderr });
+        }
+        
+        try {
+          const result = JSON.parse(stdout);
+          if (result.error) {
+            return res.status(500).json({ message: result.error });
+          }
+          
+          const pdfUrl = `/uploads/faturas_geradas/${outputFilename}`;
+          await storage.updateFatura(faturaId, { faturaGeradaUrl: pdfUrl });
+          await logAction(req.user.claims.sub, "gerar_pdf", "fatura", faturaId);
+          
+          res.json({ success: true, pdfUrl });
+        } catch (e) {
+          console.error("Error parsing PDF result:", stdout, e);
+          res.status(500).json({ message: "Failed to parse PDF generation result" });
+        }
+      });
+    } catch (error: any) {
+      console.error("Error generating PDF:", error);
+      res.status(500).json({ message: "Failed to generate PDF", error: error.message });
     }
   });
 

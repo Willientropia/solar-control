@@ -1,0 +1,201 @@
+/* Reset e dimensões A4 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #f5f5f5;
+    height: 100vh;
+}
+.page {
+    width: 210mm;
+    height: 297mm;
+    background: #fff;
+    border: none; /* Remova a borda externa */
+    padding: 0mm; /* Elimine o padding */
+    box-shadow: none; /* Remova a sombra */
+}
+
+/* Cabeçalho */
+.header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 2px solid #000;
+}
+.header .logo {
+    width: 80px;
+    height: auto;
+    margin-right: 20px;
+}
+.header .header-text {
+    font-size: 18px;
+    font-weight: bold;
+    color: #003366;
+    line-height: 1.4;
+}
+
+/* Informações do cliente */
+.info-cliente {
+    display: flex;
+    justify-content: space-between;
+    margin: 20px 0;
+}
+/* Informações do cliente - Ajuste no texto */
+.cliente-nome {
+    font-size: 18px; /* Aumentado para 18px */
+    font-weight: bold; /* Mantém o destaque com negrito */
+    margin-bottom: 10px; /* Espaçamento inferior para separar do endereço */
+}
+.cliente-detalhes {
+    width: 60%;
+    font-size: 14px; /* Aumentado de 12px para 14px */
+    line-height: 1.8; /* Ajustado o espaçamento entre linhas */
+}
+.cliente-unidade {
+    width: 35%;
+    display: flex;
+    flex-direction: column;
+}
+/* Unidade Consumidora */
+.unidade-box, .unidade-numero {
+    border-radius: 10px;
+    background: orange;
+    color: white;
+    text-align: center;
+    padding: 15px; /* Aumentado de 10px para 15px */
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+/* Ajustando o tamanho do número */
+.unidade-numero {
+    font-size: 1.8rem; /* Aumentado de 1.5rem para 1.8rem */
+}
+
+/* Dados principais */
+.dados-principais {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.dado {
+    border-radius: 10px;
+    overflow: hidden;
+    flex: 1;
+    margin-right: 10px;
+    border: 1px solid #ddd;
+    text-align: center;
+}
+.dado:last-child {
+    margin-right: 0;
+}
+.dado-header {
+    padding: 10px;
+    font-weight: bold;
+}
+.dado-content {
+    background: #fff;
+    padding: 10px;
+    font-size: 1.2rem;
+}
+.dado-header.amarelo {
+    background: yellow;
+}
+.dado-header.laranja {
+    background: orange;
+    color: white;
+}
+
+/* Informações adicionais */
+.informacoes-adicionais {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: orange;
+    color: white;
+    border-radius: 10px;
+}
+
+/* Tabela de itens da fatura */
+.tabela-fatura table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 12px;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.tabela-fatura th, .tabela-fatura td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+.tabela-fatura th {
+    background: #00bfff;
+    color: white;
+}
+/* Resumo financeiro */
+.resumo-financeiro {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start; /* Alinha pelo topo */
+    margin-top: 20px;
+}
+
+.resumo-box {
+    flex: 1; /* Garante que todos os blocos tenham a mesma largura */
+    text-align: center;
+    padding: 20px;
+    border-radius: 15px;
+    border: 2px solid transparent;
+    font-size: 14px;
+    margin-right: 10px;
+    min-height: 120px; /* Define uma altura mínima consistente */
+}
+
+.resumo-box:last-child {
+    margin-right: 0; /* Remove margem do último bloco */
+}
+
+/* Ajustando cores */
+.resumo-box.vermelho {
+    border-color: #FF6347;
+    color: #FF6347;
+}
+.resumo-box.verde {
+    border-color: #32CD32;
+    color: #32CD32;
+}
+.resumo-box.laranja {
+    border-color: orange;
+    color: orange;
+    font-size: 16px;
+}
+
+/* Valores destacados */
+.valor {
+    font-size: 24px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+/* Valor riscado */
+.valor-riscado {
+    font-size: 24px;
+    font-weight: bold;
+    text-decoration: line-through;
+    margin-top: 10px;
+}
+.resumo-box p {
+    margin: 5px 0; /* Margens para espaçamento */
+}
+
+.resumo-box p:empty {
+    height: 1em; /* Define altura para um parágrafo vazio */
+    display: block; /* Garante que seja interpretado como um bloco */
+}

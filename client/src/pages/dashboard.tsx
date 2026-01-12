@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { MetricCard } from "@/components/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -12,6 +13,7 @@ import {
   Upload,
   Plus,
   BarChart3,
+  AlertTriangle,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -20,6 +22,7 @@ interface DashboardStats {
   totalClientes: number;
   faturasPendentes: number;
   faturasProcessadas: number;
+  faturasEmAtraso: number;
   lucroMensal: number;
   economiaTotalClientes: number;
   kwhGeradoMes: number;
@@ -82,7 +85,11 @@ export default function DashboardPage() {
             <MetricCard
               title="Faturas Pendentes"
               value={stats?.faturasPendentes?.toString() || "0"}
-              subtitle="Aguardando processamento"
+              subtitle={
+                (stats?.faturasEmAtraso || 0) > 0 
+                  ? <span className="text-destructive flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{stats?.faturasEmAtraso} em atraso</span>
+                  : "Aguardando processamento"
+              }
               icon={<FileText className="h-5 w-5" />}
             />
             <MetricCard

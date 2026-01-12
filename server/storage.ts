@@ -70,11 +70,15 @@ export interface IStorage {
     totalClientes: number;
     faturasPendentes: number;
     faturasProcessadas: number;
+    faturasEmAtraso: number;
     lucroMensal: number;
     economiaTotalClientes: number;
     kwhGeradoMes: number;
     saldoTotalKwh: number;
   }>;
+  
+  // Faturas em atraso
+  getFaturasEmAtraso(): Promise<(Fatura & { cliente?: Cliente })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -358,16 +362,42 @@ export class DatabaseStorage implements IStorage {
       })
       .from(geracaoMensal);
 
+    // Get faturas em atraso (past due date and still pending)
+    const today = new Date().toISOString().split('T')[0];
+    const faturasEmAtrasoResult = await this.getFaturasEmAtraso();
+
     return {
       totalUsinas: Number(usinasCount?.count) || 0,
       totalClientes: Number(clientesCount?.count) || 0,
       faturasPendentes: Number(faturasPendentesCount?.count) || 0,
       faturasProcessadas: Number(faturasProcessadasCount?.count) || 0,
+      faturasEmAtraso: faturasEmAtrasoResult.length,
       lucroMensal: Number(lucroStats?.lucro) || 0,
       economiaTotalClientes: Number(lucroStats?.economia) || 0,
       kwhGeradoMes: Number(geracaoStats?.kwhGerado) || 0,
       saldoTotalKwh: Number(lucroStats?.saldo) || 0,
     };
+  }
+  
+  async getFaturasEmAtraso(): Promise<(Fatura & { cliente?: Cliente })[]> {
+    const allFaturas = await this.getFaturas("pendente");
+    const today = new Date();
+    
+    return allFaturas.filter((fatura) => {
+      if (!fatura.dataVencimento) return false;
+      
+      // Parse date in DD/MM/YYYY format (Brazilian)
+      const parts = fatura.dataVencimento.split('/');
+      if (parts.length !== 3) return false;
+      
+      const vencimento = new Date(
+        parseInt(parts[2]),
+        parseInt(parts[1]) - 1,
+        parseInt(parts[0])
+      );
+      
+      return vencimento < today && fatura.status === "pendente";
+    });
   }
 }
 
