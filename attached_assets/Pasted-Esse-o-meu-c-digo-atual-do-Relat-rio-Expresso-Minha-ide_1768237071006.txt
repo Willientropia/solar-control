@@ -1,0 +1,85 @@
+Esse é o meu código atual do Relatório Expresso. Minha ideia aqui era simplesmente adicionar faturas de energia em pdf, extrair dados, gerar faturas de energia com cálculos encima dos valores extraídos.
+
+O problema aqui é que não estou armazenando informações anteriores e nem fazendo relatórios.
+
+Gostaria do seguinte:
+
+Transformar isso num app com histórico, onde posso cadastrar um cliente, e em seguida enviar faturas mensais dele afim de gerar essas novas faturas, e poder usar de dados anteriores e atuais pra fazer auditoria e relatórios de lucro, custo de concessão, histórico de geração solar.
+
+quero primeiro apenas idealizar ao invés de codar. Leia meu projeto e vamos conversar sobre possiveis alterações, me faça perguntas e vamos chegar às conclusões
+
+Perfeito! Vou primeiro ler o projeto para entender o que você já tem implementado, e depois vamos conversar sobre a evolução dele.
+
+
+Executou 2 comandos
+
+Leu 6 arquivos
+Perfeito! Entendi bem o sistema atual. Deixe-me fazer algumas perguntas para entender melhor o negócio e os requisitos antes de propor uma arquitetura:
+
+📊 Entendendo o Negócio
+1. Modelo de Negócio:
+
+Você é uma integradora de energia solar que gerencia múltiplos clientes?
+O fluxo é: cliente tem painel solar → você negocia desconto com ele → recebe fatura da concessionária → gera nova fatura com desconto → cobra do cliente?
+O "lucro" seria a diferença entre o que você cobra do cliente e o que a concessionária cobra de você?
+2. Sobre Clientes:
+
+Quantos clientes você estima gerenciar? (10, 100, 1000+?)
+Um cliente pode ter múltiplas unidades consumidoras (UCs) ou geralmente é 1:1?
+Você precisa agrupar clientes? (ex: clientes residenciais vs comerciais, por região, etc)
+3. Sobre as Faturas:
+
+As faturas chegam todo mês em PDF da concessionária (Equatorial)?
+Você precisa processar todas de uma vez ou vai fazendo ao longo do mês conforme chegam?
+Existe algum processo de aprovação/revisão antes de gerar a fatura final para o cliente?
+4. Sobre Relatórios e Análises:
+Você mencionou precisar de:
+
+Lucro: lucro por cliente? por mês? acumulado?
+Custo de concessão: é o valor que você paga para a concessionária?
+Histórico de geração solar: quer acompanhar a geração de energia de cada UC ao longo do tempo? Ver tendências?
+Auditoria: você quer rastrear quem fez o quê no sistema? ou auditar se os cálculos estão corretos?
+5. Sobre Integrações:
+
+As faturas vêm sempre da mesma concessionária ou pode variar?
+Você usa algum outro sistema hoje? (ERP, CRM, planilhas específicas?)
+Precisa enviar as faturas geradas por email automaticamente para os clientes?
+6. Sobre Acesso:
+
+É só você que vai usar o sistema ou tem uma equipe?
+Precisa de diferentes níveis de acesso? (ex: alguém só visualiza, outro pode editar)
+Me responda o que conseguir e vamos montando a solução juntos! 🚀
+
+sim, eu gerencio multiplos clientes, que são diferenciados uns dos outros por nome e unidade consumidora da matriz geradora. Basicamente assim: Wendel tem uma usina geradora, e distribui seus créditos para 12 unidades, dessas 12, algumas são dele mesmo, que não entram na conta de lucro/venda de crédito, apenas 9 unidades ele realmente ganha dinheiro. Podemos tratar as outras 3 unidades como se ele desse desconto de 100% e pagasse apenas a concessionária, afinal, são unidades dele mesmo.
+
+O fluxo é exatamente isso, eu gero uma nova fatura e cobro do cliente.
+
+Sim, o lucro é a diferença do que cobro do cliente pro que pago à concessionária. Em alguns casos, os campos que pago à concessionária variam, num futuro, seria interessante poder determinar qual o cálculo de pagamento faço pra concessionária de cada unidade individualmente. Mas o padrão é o cálculo que já está no meu código.
+
+estimo gerenciar atualmente algo entorno de 5 usinas, entorno de 5 a 15 clientes por usina, nesse caso, eu cadastro a usina geradora e suas unidades consumidoras como clientes pagantes ou não, e com seus respectivos descontos.
+
+Um cliente pode sim ter multiplas unidades consumidoras, exemplo do Laerte, que possui 3 unidades consumidoras alocadas em uma usina geradora que gerencio, no caso dele, ele paga pelas 3 unidades dele em 3 contas diferentes. Até podemos criar um modal pra enxergar o que esse cliente específico está economizando em cada unidade, mas a prioridade aqui é entender que as 3 possuem um determinado desconto em relação á quanto a concessionária cobra, e enxergar esse desconto para esse cliente como economia. Além disso, tem essa relação de que alguns clientes apenas pagam exatamente o que a concessionária cobra, ou seja, pode acontecer do desconto ser de 0% também.
+
+Eu tendo a agrupar os clientes por usina, temos a usina da SOLTECH por exemplo, que atende atualmente 10 clientes, então nesse exemplo temos 11 unidades consumidoras, sendo uma uc a geradora e as outras 10 clientes pagantes.
+
+As faturas chegam da concessionária de várias formas, mas quero apenas fazer um drag e drop delas no app pra facilitar, não vamos buscar via api nem nada do tipo, eu mesmo irei inserir todas.
+Sim, podemos processar todas de uma vez, mas geralmente chegam em prazos separados uma da outra, o importante é o app ter o campo da fatura e constar se ja foi enviada ou ainda falta ser enviada pra analise. Nesse caso, é interessante manter um histórico dos arquivos e poder acessar as faturas via app caso necessário, poder visualizar as faturas dentro do app é uma funcionalidade excelente. a ideia aqui é manter essa fatura salva em pdf no sistema (database) durante 30 dias após a inserção dela no app pra visualização. Nesse caso resultaria num database menos sobrecarregado e num servidor mais barato de ser mantido e de dar update. As informações da fatura por outro lado, serão salvas num .json intitulado Mês-Ano-Uc (ex: JAN-26-201220034921.json) enquanto o app existir, pra que possamos voltar e verificar as informações
+
+existe sim um processo de revisão, é importante que o sistema confirme com o usuário se o preço do kwh está correto, bem como os dados da fatura, mas não é ideal que seja obrigatório a aferição desses dados sempre que for fazer uma nova remessa, a ideia é que o próprio usuário confira ao menos uma fatura com os dados extraídos e o cálculo feito. e o próprio sistema alerte se algum campo estiver faltando ou fora dos limiares padrões, o exemplo é uma data vir como dia 33, que não existe em nenhum mês, ou mesmo o custo da taxa de bandeira tarifária (que costuma ser um número após dois zeros da vírgula) ser lida como 1,00 real, nesse caso o app deve travar e informar que esse é um valor estranho ou errado e que deve ser revisado por um ser humano. Essa parte podemos ir refinando mais.
+
+Sobre os relatórios os lucros são por usina, então vamos supor o seguinte:
+tenho uma usina que gerou 10.000,00 kwh esse mês, o relatório deve constar onde esse kwh foi usado em cada fatura (isso vem descrito como um dos campos) e quanto cada uc retornou de lucro, até temos um modelo nesse projeto que faz isso, é o pdf.py, ele faz essas contas de lucro, retorno, pago pra concessionária. Quero poder retirar relatório por mês e por período ( que seriam dois ou mais meses).
+
+o custo de concessão varia de unidade pra unidade, algumas têm mais encargos que outras, mas meu leitor.py ja retira esses valores, como as bandeiras tarifárias, o consumo não compensado, a iluminação pública e coisas semelhantes. Nesse caso, não precisa se preocupar com esse custo, ele já está sendo calculado. O que precisamos nos preocupar no final é quanto recebemos daquela unidade, e quanto pagamos pra concessionária. com isso, e tendo o valor do kwh injetado nessa unidade no começo da conta, podemos saber exatamente por quanto vendemos esse kwh. Um exemplo é se um cliente recebe 5.000,00 kwh e pagamos 600 R$ de fatura, e recebemos 3700 R$ desse cliente, então o lucro foi de 3700-600, que é 3100, nesse caso, se vendemos os 5000 kwh por 3100, vendemos a 62 centavos o kwh, entende?
+
+o Histórico de geração será um campo a ser preenchido mensalmente pelo usuário. Ao cadastrar uma usina, temos dados como: produção mensal prevista, unidade consumidora, nome da usina... em resumo, todo mês o usuário deve preencher um campo dizendo qual foi a geração mensal, e nesse sentido, a produção mensal prevista deverá ter um alerta caso a geração desse mês tenha sido inferior a 90% do previsto.
+
+No caso da auditoria, sim, quero saber exatamente quem fez o que no sistema, é importante manter um histórico de quem fez aquela alteração ou quem emitiu aquelas faturas. Nesse caso, pode ser algo que aparece apenas em contas de usuárioas considerados administrativos.
+
+As faturas por enquanto sempre veem da mesma concessionária.
+
+hoje o sistema utilizado é esse app de gerar faturas que já está integrado no gerador_manual_pdf.py e também nas tabelas que são geradas depois de utilizar o leitor.py que possuem já um histórico de alguns clientes.
+
+Gostaria apenas de baixar as faturas, eu mesmo as enviarei (ou qualquer usuário que seja) via whatsapp, quero poder baixar mais de uma fatura simultaneamente em arquivos pdfs separados pra enviar todas de uma vez por exemplo.
+
+Temos uma equipe, outras pessoas usarão, precisamos de usuários Administrativos e usuários padrão;
