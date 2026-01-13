@@ -416,20 +416,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Normalize all numeric fields from Brazilian format
-      const valorComDesconto = parseFloat(normalizeDecimal(extractedData.valorComDesconto)) || 0;
+      const valorSemDesconto = parseFloat(normalizeDecimal(extractedData.valorSemDesconto)) || 0;
       const valorTotal = parseFloat(normalizeDecimal(extractedData.valorTotal)) || 0;
       
-      // Lucro = valorComDesconto - valorTotal (o que o cliente paga à empresa menos o que vai para a concessionária)
-      const lucroCalculado = valorComDesconto - valorTotal;
-      
-      const normalizedData = {
-        ...extractedData,
-        mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
-        consumoScee: normalizeDecimal(extractedData.consumoScee),
-        consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
-        valorSemDesconto: normalizeDecimal(extractedData.valorSemDesconto),
-        valorComDesconto: valorComDesconto.toString(),
-        economia: normalizeDecimal(extractedData.economia),
+      // Use client specific discount if available
+       const clientDiscount = parseFloat(cliente.desconto || "0");
+       
+       console.log(`Recalculating invoice values for Client ${cliente.nome} (${clienteId})`);
+       console.log(`Client Discount: ${clientDiscount}%, Valor Sem Desconto: ${valorSemDesconto}`);
+       
+       // Recalculate values using the correct discount
+       // Formula: ((Consumo SCEE + Consumo Nao Compensado) * Preco kWh * (1 - Desconto)) + Contrib Ilum
+       
+       let valorComDesconto: number;
+       let economia: number;
+       
+       const consumoScee = parseFloat(normalizeDecimal(extractedData.consumoScee)) || 0;
+       const consumoNaoCompensado = parseFloat(normalizeDecimal(extractedData.consumoNaoCompensado)) || 0;
+       const contribuicaoIlum = parseFloat(normalizeDecimal(extractedData.contribuicaoIluminacao)) || 0;
+       const precoKwh = parseFloat(normalizeDecimal(extractedData.precoKwhUsado)) || 0.85; // Fallback default if missing
+
+       // Recalculate Valor Sem Desconto to ensure consistency
+       // Valor Sem Desconto = ((Consumo Total) * Preco kWh) + Contrib Ilum
+       const valorSemDescontoCalculado = ((consumoScee + consumoNaoCompensado) * precoKwh) + contribuicaoIlum;
+       
+       // Update the variable to be used later
+       const valorSemDescontoFinal = valorSemDescontoCalculado;
+
+       if (clientDiscount > 0) {
+         const discountMultiplier = 1 - (clientDiscount / 100);
+         const valorEnergiaComDesconto = ((consumoScee + consumoNaoCompensado) * precoKwh * discountMultiplier);
+         valorComDesconto = valorEnergiaComDesconto + contribuicaoIlum;
+         economia = valorSemDescontoFinal - valorComDesconto;
+       } else {
+         // Fallback to extracted values if no client discount, but ensuring consistency
+         // If extracted data has values, use them, otherwise calculate with 0 discount
+         if (extractedData.valorComDesconto) {
+            valorComDesconto = parseFloat(normalizeDecimal(extractedData.valorComDesconto)) || 0;
+            economia = parseFloat(normalizeDecimal(extractedData.economia)) || 0;
+         } else {
+            valorComDesconto = valorSemDescontoFinal;
+            economia = 0;
+         }
+       }
+       
+       // Lucro = Valor Com Desconto - Valor Total (o que o cliente paga à empresa menos o que vai para a concessionária)
+       const lucroCalculado = valorComDesconto - valorTotal;
+       
+       const normalizedData = {
+         ...extractedData,
+         mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
+         consumoScee: normalizeDecimal(extractedData.consumoScee),
+         consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
+         valorSemDesconto: valorSemDescontoFinal.toFixed(2),
+         valorComDesconto: valorComDesconto.toFixed(2),
+         economia: economia.toFixed(2),
         lucro: lucroCalculado.toFixed(2),
         saldoKwh: normalizeDecimal(extractedData.saldoKwh),
         consumoKwh: normalizeDecimal(extractedData.consumoKwh),
