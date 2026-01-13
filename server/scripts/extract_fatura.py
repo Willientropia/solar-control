@@ -327,13 +327,14 @@ def calculate_values(data, price_kwh, discount_percent):
         data['fioB'] = round(fio_b_valor, 2)
 
         # Novo cálculo de Valor sem Desconto:
-        # ValorSemDesconto = ((Consumo SCEE + Consumo Não Compensado) × Preço kWh) + ValorTotal - Fio B
-        valor_sem_desconto = ((consumo_scee + consumo_nao_compensado) * price_kwh) + valor_total - fio_b_valor
+        # ValorSemDesconto = (Consumo SCEE × Preço kWh) + ValorTotal - Fio B
+        valor_sem_desconto = (consumo_scee * price_kwh) + valor_total - fio_b_valor
         data['valorSemDesconto'] = round(valor_sem_desconto, 2)
 
         # Valor com desconto
         discount_multiplier = 1 - (discount_percent / 100)
-        valor_com_desconto = valor_sem_desconto * discount_multiplier
+        # Novo cálculo: ((Consumo SCEE * Preço kWh) * descontMultiplier) + ValorTotal - Fio B
+        valor_com_desconto = ((consumo_scee * price_kwh) * discount_multiplier) + valor_total - fio_b_valor
         data['valorComDesconto'] = round(valor_com_desconto, 2)
 
         # Economia

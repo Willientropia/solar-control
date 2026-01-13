@@ -439,9 +439,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Recalculate Valor Sem Desconto to ensure consistency
       // Novo cálculo:
-      // ValorSemDesconto = ((Consumo SCEE + Consumo Não Compensado) × Preço kWh) + ValorTotal - Fio B
+      // ValorSemDesconto = (Consumo SCEE × Preço kWh) + ValorTotal - Fio B
       const fioBValor = (consumoScee * precoFioBNum);
-      const valorSemDescontoCalculado = ((consumoScee + consumoNaoCompensado) * precoKwh) + valorTotal - fioBValor;
+      const valorSemDescontoCalculado = (consumoScee * precoKwh) + valorTotal - fioBValor;
       
       console.log("Recalculation Debug:", {
         consumoScee,
@@ -459,11 +459,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? valorSemDescontoFrontend 
         : valorSemDescontoCalculado;
 
-       // Valor com desconto = ValorSemDesconto - (ValorSemDesconto * porcentagem de desconto)
+       // Valor com desconto
+       // Novo cálculo: ((Consumo SCEE * Preço kWh) * descontMultiplier) + ValorTotal - Fio B
        const discountMultiplier = 1 - (clientDiscount / 100);
        
        const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
-       const valorComDescontoCalculado = valorSemDescontoFinal * discountMultiplier;
+       const valorComDescontoCalculado = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
        
        // Use frontend value if provided, otherwise calculated
        valorComDesconto = (!isNaN(valorComDescontoFrontend) && valorComDescontoFrontend !== 0)
