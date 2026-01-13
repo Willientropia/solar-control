@@ -162,7 +162,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ==================== FATURAS ====================
-  async getFaturas(status?: string): Promise<(Fatura & { cliente?: Cliente })[]> {
+  async getFaturas(status?: string, usinaId?: string, mesReferencia?: string): Promise<(Fatura & { cliente?: Cliente })[]> {
     let query = db
       .select()
       .from(faturas)
@@ -172,7 +172,12 @@ export class DatabaseStorage implements IStorage {
     const result = await query;
 
     return result
-      .filter((row) => !status || row.faturas.status === status)
+      .filter((row) => {
+        const statusMatch = !status || row.faturas.status === status;
+        const usinaMatch = !usinaId || row.faturas.usinaId === usinaId || row.clientes?.usinaId === usinaId;
+        const mesMatch = !mesReferencia || row.faturas.mesReferencia === mesReferencia;
+        return statusMatch && usinaMatch && mesMatch;
+      })
       .map((row) => ({
         ...row.faturas,
         cliente: row.clientes || undefined,
@@ -181,6 +186,14 @@ export class DatabaseStorage implements IStorage {
 
   async getFatura(id: string): Promise<Fatura | undefined> {
     const [fatura] = await db.select().from(faturas).where(eq(faturas.id, id));
+    return fatura;
+  }
+
+  async getFaturaByClienteAndMonth(clienteId: string, mesReferencia: string): Promise<Fatura | undefined> {
+    const [fatura] = await db
+      .select()
+      .from(faturas)
+      .where(and(eq(faturas.clienteId, clienteId), eq(faturas.mesReferencia, mesReferencia)));
     return fatura;
   }
 

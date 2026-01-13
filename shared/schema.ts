@@ -71,6 +71,7 @@ export type Cliente = typeof clientes.$inferSelect;
 export const faturas = pgTable("faturas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   clienteId: varchar("cliente_id").notNull().references(() => clientes.id, { onDelete: "cascade" }),
+  usinaId: varchar("usina_id").references(() => usinas.id),
   mesReferencia: text("mes_referencia").notNull(),
   dataVencimento: text("data_vencimento"),
   
@@ -93,7 +94,7 @@ export const faturas = pgTable("faturas", {
   
   // Metadados
   dadosExtraidos: jsonb("dados_extraidos"),
-  status: text("status").notNull().default("pendente"), // pendente, processada, enviada
+  status: text("status").notNull().default("aguardando_upload"), // aguardando_upload, aguardando_pagamento, pagamento_pendente, pago
   arquivoPdfUrl: text("arquivo_pdf_url"),
   faturaGeradaUrl: text("fatura_gerada_url"),
   
@@ -102,6 +103,7 @@ export const faturas = pgTable("faturas", {
   createdBy: varchar("created_by").references(() => users.id),
 }, (table) => [
   index("faturas_cliente_id_idx").on(table.clienteId),
+  index("faturas_usina_id_idx").on(table.usinaId),
   index("faturas_mes_referencia_idx").on(table.mesReferencia),
 ]);
 
@@ -112,6 +114,10 @@ export const faturasRelations = relations(faturas, ({ one }) => ({
   cliente: one(clientes, {
     fields: [faturas.clienteId],
     references: [clientes.id],
+  }),
+  usina: one(usinas, {
+    fields: [faturas.usinaId],
+    references: [usinas.id],
   }),
   createdByUser: one(users, {
     fields: [faturas.createdBy],

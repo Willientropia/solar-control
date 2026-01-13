@@ -445,8 +445,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dataVencimento: extractedData.dataVencimento || "",
       };
 
-      // Create the fatura with extracted data
-      const fatura = await storage.createFatura({
+      // Create or Update the fatura with extracted data
+      let fatura;
+      
+      // Check if invoice already exists for this client and month
+      const existingFatura = await storage.getFaturaByClienteAndMonth(clienteId, normalizedData.mesReferencia || "");
+
+      const faturaData = {
         clienteId,
         mesReferencia: normalizedData.mesReferencia || "",
         dataVencimento: normalizedData.dataVencimento,
@@ -463,21 +468,96 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         valorComDesconto: normalizedData.valorComDesconto,
         economia: normalizedData.economia,
         lucro: normalizedData.lucro,
-        status: "pendente",
+        status: "aguardando_pagamento", // Update status to waiting for payment
         createdBy: req.user.claims.sub,
         dadosExtraidos: normalizedData,
-      });
+      };
 
-      await logAction(req.user.claims.sub, "criar", "fatura", fatura.id, {
-        clienteId,
-        mesReferencia: extractedData.mesReferencia,
-        unidadeConsumidora: extractedData.unidadeConsumidora,
-      });
+      if (existingFatura) {
+        // Update existing fatura
+        fatura = await storage.updateFatura(existingFatura.id, faturaData);
+        await logAction(req.user.claims.sub, "editar", "fatura", existingFatura.id, {
+          clienteId,
+          mesReferencia: extractedData.mesReferencia,
+          unidadeConsumidora: extractedData.unidadeConsumidora,
+          action: "upload_update"
+        });
+      } else {
+        // Create new fatura
+        fatura = await storage.createFatura(faturaData);
+        await logAction(req.user.claims.sub, "criar", "fatura", fatura.id, {
+          clienteId,
+          mesReferencia: extractedData.mesReferencia,
+          unidadeConsumidora: extractedData.unidadeConsumidora,
+        });
+      }
 
       res.status(201).json(fatura);
     } catch (error: any) {
       console.error("Error confirming fatura:", error);
       res.status(500).json({ message: "Erro ao salvar fatura", error: error.message });
+    }
+  });
+
+  // Generate placeholders for missing invoices
+  app.post("/api/faturas/generate-placeholders", isAuthenticated, async (req: any, res) => {
+    try {
+      const { mesReferencia } = req.body;
+      
+      if (!mesReferencia) {
+        return res.status(400).json({ message: "mesReferencia is required" });
+      }
+
+      // Get all clients
+      const allClientes = await storage.getClientes();
+      
+      // Filter for active clients (including non-paying ones like Usina/Matriz)
+      // The requirement is to track invoice uploads for ALL active units
+      const activeClientes = allClientes.filter(c => c.ativo);
+      
+      let createdCount = 0;
+      
+      for (const cliente of activeClientes) {
+        // Check if invoice already exists for this client and month
+        const existingFatura = await storage.getFaturaByClienteAndMonth(cliente.id, mesReferencia);
+        
+        if (!existingFatura) {
+          // Create placeholder fatura
+          await storage.createFatura({
+            clienteId: cliente.id,
+            usinaId: cliente.usinaId,
+            mesReferencia,
+            status: "aguardando_upload",
+            // Initialize with zero/empty values
+            consumoScee: "0",
+            consumoNaoCompensado: "0",
+            energiaInjetada: "0",
+            saldoKwh: "0",
+            contribuicaoIluminacao: "0",
+            precoKwh: "0",
+            valorTotal: "0",
+            valorSemDesconto: "0",
+            valorComDesconto: "0",
+            economia: "0",
+            lucro: "0",
+            createdBy: req.user.claims.sub,
+          });
+          createdCount++;
+        }
+      }
+      
+      await logAction(req.user.claims.sub, "gerar_pendencias", "fatura", undefined, { 
+        mesReferencia, 
+        createdCount 
+      });
+      
+      res.json({ 
+        message: `${createdCount} pendências geradas para ${mesReferencia}`,
+        createdCount 
+      });
+    } catch (error) {
+      console.error("Error generating placeholders:", error);
+      res.status(500).json({ message: "Failed to generate placeholders" });
     }
   });
 
@@ -581,8 +661,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/faturas/:id/status", isAuthenticated, async (req: any, res) => {
     try {
       const { status } = req.body;
-      if (!["pendente", "processada", "enviada"].includes(status)) {
+      
+      // Valid statuses
+      const validStatuses = ["aguardando_upload", "aguardando_pagamento", "pagamento_pendente_confirmacao", "pago", "pendente", "processada", "enviada"];
+      if (!validStatuses.includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
+      }
+
+      // Permission Check
+      const userProfile = await storage.getUserProfile(req.user.claims.sub);
+      const userRole = userProfile?.role || "operador";
+
+      if (status === "pago" && userRole !== "admin") {
+        return res.status(403).json({ message: "Apenas administradores podem marcar como Pago." });
       }
 
       const fatura = await storage.updateFatura(req.params.id, { status });
@@ -852,6 +943,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return `${months[now.getMonth()]}/${now.getFullYear()}`;
   }
 
+  // Helper to normalize month reference
+  function normalizeMonthReference(monthRef: string): string {
+    if (!monthRef) return "";
+    const parts = monthRef.trim().split("/");
+    if (parts.length !== 2) return monthRef;
+    
+    let [month, year] = parts;
+    month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    if (year.length === 2) {
+      year = "20" + year;
+    }
+    return `${month}/${year}`;
+  }
+
   // ==================== GERAÇÃO MENSAL ====================
   app.get("/api/geracao", isAuthenticated, async (req, res) => {
     try {
@@ -1068,6 +1173,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error updating user role:", error);
       res.status(500).json({ message: "Failed to update user role" });
+    }
+  });
+
+  // Maintenance: Cleanup old faturas
+  app.delete("/api/maintenance/cleanup", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const allFaturas = await storage.getFaturas();
+      const today = new Date();
+      let deletedCount = 0;
+
+      for (const f of allFaturas) {
+        if (!f.dataVencimento || f.status !== "pago") continue; // Only delete PAID invoices? User didn't specify, but safer. 
+        // User said: "depois de enviar... baixar... 30 dias após vencimento... apagar".
+        // Implies we delete regardless of status? Or only if processed?
+        // Safe bet: Delete if > 30 days past due.
+        
+        const parts = f.dataVencimento.split('/');
+        if (parts.length !== 3) continue;
+        
+        const vencimento = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        const deadline = new Date(vencimento);
+        deadline.setDate(deadline.getDate() + 30);
+
+        if (today > deadline) {
+          await storage.deleteFatura(f.id);
+          // Optional: Delete file from disk if path exists
+          if (f.arquivoPdfUrl) {
+             const filename = path.basename(f.arquivoPdfUrl);
+             const filePath = path.join(uploadDir, filename);
+             if (fs.existsSync(filePath)) {
+               fs.unlinkSync(filePath);
+             }
+          }
+          deletedCount++;
+        }
+      }
+      
+      await logAction(req.user.claims.sub, "cleanup", "fatura", undefined, { deletedCount });
+      res.json({ message: `Limpeza concluída. ${deletedCount} faturas antigas removidas.` });
+    } catch (error: any) {
+      console.error("Error cleaning up faturas:", error);
+      res.status(500).json({ message: "Erro na limpeza de faturas", error: error.message });
     }
   });
 

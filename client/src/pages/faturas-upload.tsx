@@ -119,7 +119,7 @@ export default function FaturasUploadPage() {
   const { toast } = useToast();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("");
-  const [precoKwh, setPrecoKwh] = useState<string>("0.85");
+  const [precoKwh, setPrecoKwh] = useState<string>("1.20");
   const [isDragging, setIsDragging] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
