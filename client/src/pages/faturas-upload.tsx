@@ -138,6 +138,7 @@ export default function FaturasUploadPage() {
 
   const filteredClientes = clientes.filter((c) => c.usinaId === selectedUsinaId);
   const selectedUsina = usinas.find((u) => u.id === selectedUsinaId);
+  const selectedCliente = clientes.find((c) => c.id === selectedClienteId);
 
   const extractMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -317,6 +318,42 @@ export default function FaturasUploadPage() {
       return newData;
     });
   };
+
+  // Recalculate values when client is selected
+  useEffect(() => {
+    if (selectedClienteId && selectedCliente && formData.consumoScee) {
+      // Get client discount
+      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+
+      // Get values from form
+      const consumoScee = parseToNumber(formData.consumoScee || "0");
+      const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
+      const valorTotal = parseToNumber(formData.valorTotal || "0");
+      const precoFioB = parseToNumber(formData.precoFioB || "0");
+
+      // Calculate Fio B
+      const fioBValor = consumoScee * precoFioB;
+
+      // Calculate values using CLIENT discount (not plant default!)
+      const discountMultiplier = 1 - (clientDiscount / 100);
+      const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+      const valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+      const economia = valorSemDesconto - valorComDesconto;
+      const lucro = valorComDesconto - valorTotal;
+
+      // Update form data with recalculated values
+      setFormData((prev) => ({
+        ...prev,
+        fioB: formatNumber(fioBValor),
+        valorSemDesconto: formatNumber(valorSemDesconto),
+        valorComDesconto: formatNumber(valorComDesconto),
+        economia: formatNumber(economia),
+        lucro: formatNumber(lucro),
+      }));
+
+      console.log(`Recalculated for client ${selectedCliente.nome} with ${clientDiscount}% discount`);
+    }
+  }, [selectedClienteId, selectedCliente, formData.consumoScee, precoKwh]);
 
   const handleConfirm = () => {
     if (!selectedClienteId) {
@@ -523,6 +560,18 @@ export default function FaturasUploadPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedCliente && (
+                    <div className="mt-2 p-2 rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-900 dark:text-blue-100">
+                        <strong>Desconto aplicado:</strong> {selectedCliente.desconto}%
+                        {selectedUsina && parseFloat(selectedCliente.desconto || "0") !== parseFloat(selectedUsina.descontoPadrao || "0") && (
+                          <span className="ml-2 text-xs text-blue-700 dark:text-blue-300">
+                            (diferente do padrão da usina: {selectedUsina.descontoPadrao}%)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />

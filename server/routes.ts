@@ -418,12 +418,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Normalize all numeric fields from Brazilian format
       const valorSemDesconto = parseFloat(normalizeDecimal(extractedData.valorSemDesconto)) || 0;
       const valorTotal = parseFloat(normalizeDecimal(extractedData.valorTotal)) || 0;
-      
+
       // Use client specific discount if available
        const clientDiscount = parseFloat(cliente.desconto || "0");
-       
-       console.log(`Recalculating invoice values for Client ${cliente.nome} (${clienteId})`);
-       console.log(`Client Discount: ${clientDiscount}%, Valor Sem Desconto: ${valorSemDesconto}`);
+
+       console.log(`\n========== INVOICE CONFIRMATION ==========`);
+       console.log(`Client: ${cliente.nome} (ID: ${clienteId})`);
+       console.log(`Client Discount: ${clientDiscount}%`);
+       console.log(`Valor Sem Desconto (from extraction): ${valorSemDesconto}`);
+       console.log(`==========================================\n`);
        
        // Recalculate values using the correct discount
        // Formula: ((Consumo SCEE + Consumo Nao Compensado) * Preco kWh * (1 - Desconto)) + Contrib Ilum
@@ -443,14 +446,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const fioBValor = (consumoScee * precoFioBNum);
       const valorSemDescontoCalculado = (consumoScee * precoKwh) + valorTotal - fioBValor;
       
-      console.log("Recalculation Debug:", {
-        consumoScee,
-        consumoNaoCompensado,
-        precoKwh,
-        valorTotal,
-        fioBValor,
-        valorSemDescontoCalculado
-      });
+      console.log("Calculation Details:");
+      console.log(`  Consumo SCEE: ${consumoScee} kWh`);
+      console.log(`  Preço kWh: R$ ${precoKwh}`);
+      console.log(`  Valor Total Fatura: R$ ${valorTotal}`);
+      console.log(`  Preço Fio B: R$ ${precoFioBNum}`);
+      console.log(`  Fio B Calculado: R$ ${fioBValor.toFixed(2)}`);
+      console.log(`  Valor Sem Desconto: R$ ${valorSemDescontoCalculado.toFixed(2)}`);
 
       // Update the variable to be used later
       // PRIORITIZE Frontend values if they are manually provided
@@ -462,17 +464,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
        // Valor com desconto
        // Novo cálculo: ((Consumo SCEE * Preço kWh) * descontMultiplier) + ValorTotal - Fio B
        const discountMultiplier = 1 - (clientDiscount / 100);
-       
+
        const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
        const valorComDescontoCalculado = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
-       
+
+       console.log(`\nDiscount Application:`);
+       console.log(`  Client Discount: ${clientDiscount}%`);
+       console.log(`  Discount Multiplier: ${discountMultiplier}`);
+       console.log(`  Valor Com Desconto (Frontend/Extraction): R$ ${valorComDescontoFrontend.toFixed(2)}`);
+       console.log(`  Valor Com Desconto (Recalculated with CLIENT discount): R$ ${valorComDescontoCalculado.toFixed(2)}`);
+
        // FORCE use of calculated value to ensure client discount is applied correctly
        // The frontend/extraction might have used default plant discount
        if (!isNaN(valorComDescontoFrontend) && Math.abs(valorComDescontoFrontend - valorComDescontoCalculado) > 0.05) {
-          console.log(`[Correction] Replacing frontend value ${valorComDescontoFrontend} with calculated value ${valorComDescontoCalculado} using discount ${clientDiscount}%`);
+          console.log(`  [CORRECTION] Replacing frontend value with recalculated value!`);
+          console.log(`  Difference: R$ ${Math.abs(valorComDescontoFrontend - valorComDescontoCalculado).toFixed(2)}`);
        }
-       
+
        valorComDesconto = valorComDescontoCalculado;
+       console.log(`  FINAL Valor Com Desconto: R$ ${valorComDesconto.toFixed(2)}\n`);
          
        // Recalculate Economia and Lucro based on the FINAL used values to ensure internal consistency
        // Economia = VSD - VCD
