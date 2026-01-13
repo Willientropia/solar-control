@@ -466,10 +466,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
        const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
        const valorComDescontoCalculado = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
        
-       // Use frontend value if provided, otherwise calculated
-       valorComDesconto = (!isNaN(valorComDescontoFrontend) && valorComDescontoFrontend !== 0)
-         ? valorComDescontoFrontend
-         : valorComDescontoCalculado;
+       // FORCE use of calculated value to ensure client discount is applied correctly
+       // The frontend/extraction might have used default plant discount
+       if (!isNaN(valorComDescontoFrontend) && Math.abs(valorComDescontoFrontend - valorComDescontoCalculado) > 0.05) {
+          console.log(`[Correction] Replacing frontend value ${valorComDescontoFrontend} with calculated value ${valorComDescontoCalculado} using discount ${clientDiscount}%`);
+       }
+       
+       valorComDesconto = valorComDescontoCalculado;
          
        // Recalculate Economia and Lucro based on the FINAL used values to ensure internal consistency
        // Economia = VSD - VCD
