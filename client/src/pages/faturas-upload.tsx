@@ -74,6 +74,7 @@ interface ExtractedData {
   lucro?: number | string;
   precoKwhUsado?: number | string;
   descontoUsado?: number | string;
+  fioB?: number | string;
 }
 
 interface UploadedFile {
@@ -83,7 +84,7 @@ interface UploadedFile {
   extractedData?: ExtractedData;
 }
 
-const FIELD_CONFIG: { key: keyof ExtractedData; label: string; type: "text" | "number" }[] = [
+const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "text" | "number" }[] = [
   { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" },
   { key: "nomeCliente", label: "Nome do Cliente", type: "text" },
   { key: "endereco", label: "Endereço", type: "text" },
@@ -101,6 +102,7 @@ const FIELD_CONFIG: { key: keyof ExtractedData; label: string; type: "text" | "n
   { key: "precoEnergiaCompensada", label: "Preço Energia Compensada (R$)", type: "text" },
   { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado (R$)", type: "text" },
   { key: "precoFioB", label: "Preço Fio B (R$)", type: "text" },
+  { key: "fioB", label: "Fio B (R$)", type: "text" },
   { key: "precoAdcBandeira", label: "Preço ADC Bandeira (R$)", type: "text" },
   { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública (R$)", type: "text" },
   { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" },
@@ -163,6 +165,12 @@ export default function FaturasUploadPage() {
         const value = data[key];
         initialFormData[key] = value !== null && value !== undefined ? String(value) : "";
       });
+      // Garantir que o preço do kWh usado na extração siga para a confirmação
+      initialFormData["precoKwhUsado"] = String(
+        data.precoKwhUsado !== undefined && data.precoKwhUsado !== null
+          ? data.precoKwhUsado
+          : precoKwh
+      );
       setFormData(initialFormData);
       setPdfUrl(data.fileUrl || "");
       
@@ -198,7 +206,8 @@ export default function FaturasUploadPage() {
         "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhNaoCompensado",
         "precoFioB", "precoAdcBandeira", "contribuicaoIluminacao", "valorTotal",
         "saldoKwh", "geracaoUltimoCiclo", "valorSemDesconto", "valorComDesconto",
-        "economia", "lucro", "leituraAnterior", "leituraAtual", "quantidadeDias"
+        "economia", "lucro", "leituraAnterior", "leituraAtual", "quantidadeDias",
+        "precoKwhUsado"
       ];
 
       Object.entries(data.extractedData).forEach(([key, value]) => {

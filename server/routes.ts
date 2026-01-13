@@ -433,32 +433,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
        
        const consumoScee = parseFloat(normalizeDecimal(extractedData.consumoScee)) || 0;
        const consumoNaoCompensado = parseFloat(normalizeDecimal(extractedData.consumoNaoCompensado)) || 0;
-       const contribuicaoIlum = parseFloat(normalizeDecimal(extractedData.contribuicaoIluminacao)) || 0;
-       const precoKwh = parseFloat(normalizeDecimal(extractedData.precoKwhUsado)) || 0.85; // Fallback default if missing
+      const contribuicaoIlum = parseFloat(normalizeDecimal(extractedData.contribuicaoIluminacao)) || 0;
+      const precoKwh = parseFloat(normalizeDecimal(extractedData.precoKwhUsado)) || 0.85; // Fallback default if missing
+      const precoFioBNum = parseFloat(normalizeDecimal(extractedData.precoFioB)) || 0;
 
-       // Recalculate Valor Sem Desconto to ensure consistency
-       // Valor Sem Desconto = ((Consumo Total) * Preco kWh) + Contrib Ilum
-       const valorSemDescontoCalculado = ((consumoScee + consumoNaoCompensado) * precoKwh) + contribuicaoIlum;
+      // Recalculate Valor Sem Desconto to ensure consistency
+      // Novo cálculo:
+      // ValorSemDesconto = ((Consumo SCEE + Consumo Não Compensado) × Preço kWh) + ValorTotal - Fio B
+      const fioBValor = (consumoScee * precoFioBNum);
+      const valorSemDescontoCalculado = ((consumoScee + consumoNaoCompensado) * precoKwh) + valorTotal - fioBValor;
+      
+      console.log("Recalculation Debug:", {
+        consumoScee,
+        consumoNaoCompensado,
+        precoKwh,
+        valorTotal,
+        fioBValor,
+        valorSemDescontoCalculado
+      });
+
+      // Update the variable to be used later
+      // PRIORITIZE Frontend values if they are manually provided
+      const valorSemDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorSemDesconto));
+      const valorSemDescontoFinal = (!isNaN(valorSemDescontoFrontend) && valorSemDescontoFrontend !== 0) 
+        ? valorSemDescontoFrontend 
+        : valorSemDescontoCalculado;
+
+       // Valor com desconto = ValorSemDesconto - (ValorSemDesconto * porcentagem de desconto)
+       const discountMultiplier = 1 - (clientDiscount / 100);
        
-       // Update the variable to be used later
-       const valorSemDescontoFinal = valorSemDescontoCalculado;
-
-       if (clientDiscount > 0) {
-         const discountMultiplier = 1 - (clientDiscount / 100);
-         const valorEnergiaComDesconto = ((consumoScee + consumoNaoCompensado) * precoKwh * discountMultiplier);
-         valorComDesconto = valorEnergiaComDesconto + contribuicaoIlum;
-         economia = valorSemDescontoFinal - valorComDesconto;
-       } else {
-         // Fallback to extracted values if no client discount, but ensuring consistency
-         // If extracted data has values, use them, otherwise calculate with 0 discount
-         if (extractedData.valorComDesconto) {
-            valorComDesconto = parseFloat(normalizeDecimal(extractedData.valorComDesconto)) || 0;
-            economia = parseFloat(normalizeDecimal(extractedData.economia)) || 0;
-         } else {
-            valorComDesconto = valorSemDescontoFinal;
-            economia = 0;
-         }
-       }
+       const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
+       const valorComDescontoCalculado = valorSemDescontoFinal * discountMultiplier;
+       
+       // Use frontend value if provided, otherwise calculated
+       valorComDesconto = (!isNaN(valorComDescontoFrontend) && valorComDescontoFrontend !== 0)
+         ? valorComDescontoFrontend
+         : valorComDescontoCalculado;
+         
+       // Recalculate Economia and Lucro based on the FINAL used values to ensure internal consistency
+       // Economia = VSD - VCD
+       economia = valorSemDescontoFinal - valorComDesconto;
        
        // Lucro = Valor Com Desconto - Valor Total (o que o cliente paga à empresa menos o que vai para a concessionária)
        const lucroCalculado = valorComDesconto - valorTotal;
@@ -468,9 +482,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
          mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
          consumoScee: normalizeDecimal(extractedData.consumoScee),
          consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
-         valorSemDesconto: valorSemDescontoFinal.toFixed(2),
-         valorComDesconto: valorComDesconto.toFixed(2),
-         economia: economia.toFixed(2),
+        valorSemDesconto: valorSemDescontoFinal.toFixed(2),
+        valorComDesconto: valorComDesconto.toFixed(2),
+        economia: economia.toFixed(2),
+        fioB: fioBValor.toFixed(2),
         lucro: lucroCalculado.toFixed(2),
         saldoKwh: normalizeDecimal(extractedData.saldoKwh),
         consumoKwh: normalizeDecimal(extractedData.consumoKwh),
@@ -501,7 +516,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         energiaInjetada: normalizedData.energiaInjetada,
         saldoKwh: normalizedData.saldoKwh,
         contribuicaoIluminacao: normalizedData.contribuicaoIluminacao,
-        precoKwh: normalizeDecimal(extractedData.precoKwhUsado) || "0.85",
+        precoKwh: (() => {
+          const kwh = normalizeDecimal(extractedData.precoKwhUsado);
+          const num = parseFloat(kwh);
+          return !extractedData.precoKwhUsado || isNaN(num) || num <= 0 ? "1.20" : kwh;
+        })(),
         precoAdcBandeira: normalizedData.precoAdcBandeira,
         precoFioB: normalizedData.precoFioB,
         valorTotal: normalizedData.valorTotal,
@@ -824,24 +843,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Helper function to normalize month reference (e.g. "DEZ/25" -> "Dez/2025")
-  function normalizeMonthReference(monthRef: string): string {
-    if (!monthRef) return "";
-    const parts = monthRef.trim().split("/");
-    if (parts.length !== 2) return monthRef;
-    
-    let [month, year] = parts;
-    
-    // Normalize month (capitalize first letter, lowercase rest)
-    month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
-    
-    // Normalize year (ensure 4 digits)
-    if (year.length === 2) {
-      year = "20" + year;
-    }
-    
-    return `${month}/${year}`;
-  }
 
   // Helper function to parse Brazilian number format
   function parseBrazilianNumber(value: string | null | undefined): number {

@@ -315,26 +315,31 @@ def extract_data_from_text(text, pdf_path):
 
 
 def calculate_values(data, price_kwh, discount_percent):
-    """Calcula os valores com e sem desconto."""
     try:
         consumo_scee = sanitize_to_float(data.get('consumoScee', '0'))
         consumo_nao_compensado = sanitize_to_float(data.get('consumoNaoCompensado', '0'))
         contribuicao = sanitize_to_float(data.get('contribuicaoIluminacao', '0'))
+        preco_fio_b = sanitize_to_float(data.get('precoFioB', '0'))
+        valor_total = sanitize_to_float(data.get('valorTotal', '0'))
 
-        # Valor sem desconto (como seria sem energia solar)
-        valor_sem_desconto = ((consumo_scee + consumo_nao_compensado) * price_kwh) + contribuicao
+        # Fio B = (Consumo SCEE) * Preço Fio B
+        fio_b_valor = consumo_scee * preco_fio_b
+        data['fioB'] = round(fio_b_valor, 2)
+
+        # Novo cálculo de Valor sem Desconto:
+        # ValorSemDesconto = ((Consumo SCEE + Consumo Não Compensado) × Preço kWh) + ValorTotal - Fio B
+        valor_sem_desconto = ((consumo_scee + consumo_nao_compensado) * price_kwh) + valor_total - fio_b_valor
         data['valorSemDesconto'] = round(valor_sem_desconto, 2)
 
         # Valor com desconto
         discount_multiplier = 1 - (discount_percent / 100)
-        valor_com_desconto = ((consumo_scee + consumo_nao_compensado) * price_kwh * discount_multiplier) + contribuicao
+        valor_com_desconto = valor_sem_desconto * discount_multiplier
         data['valorComDesconto'] = round(valor_com_desconto, 2)
 
         # Economia
         data['economia'] = round(valor_sem_desconto - valor_com_desconto, 2)
 
         # Lucro = Valor Com Desconto - Valor Total Fatura
-        valor_total = sanitize_to_float(data.get('valorTotal', '0'))
         data['lucro'] = round(valor_com_desconto - valor_total, 2)
 
     except Exception as e:
@@ -379,7 +384,7 @@ def main():
         'consumoKwh', 'valorTotal', 'saldoKwh', 'contribuicaoIluminacao',
         'energiaInjetada', 'precoEnergiaInjetada', 'consumoScee', 'precoEnergiaCompensada',
         'precoFioB', 'consumoNaoCompensado', 'precoKwhNaoCompensado', 'precoAdcBandeira',
-        'geracaoUltimoCiclo', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'
+        'geracaoUltimoCiclo', 'fioB', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'
     ]
     
     for field in numeric_fields:
