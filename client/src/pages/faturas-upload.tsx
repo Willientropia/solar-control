@@ -332,13 +332,14 @@ export default function FaturasUploadPage() {
       (file) => file.type === "application/pdf"
     );
     if (droppedFiles.length > 0) {
-      setFiles([{ file: droppedFiles[0], status: "pending" }]);
+      setFiles(droppedFiles.map(file => ({ file, status: "pending" as const })));
     }
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFiles([{ file: e.target.files[0], status: "pending" }]);
+    if (e.target.files && e.target.files.length > 0) {
+      const fileArray = Array.from(e.target.files);
+      setFiles(fileArray.map(file => ({ file, status: "pending" as const })));
     }
   };
 
@@ -350,7 +351,7 @@ export default function FaturasUploadPage() {
     if (files.length === 0) {
       toast({
         title: "Selecione um arquivo",
-        description: "Adicione um arquivo PDF para continuar.",
+        description: "Adicione pelo menos um arquivo PDF para continuar.",
         variant: "destructive",
       });
       return;
@@ -369,7 +370,10 @@ export default function FaturasUploadPage() {
       prev.map((f) => ({ ...f, status: "uploading" as const }))
     );
 
-    extractMutation.mutate(files[0].file);
+    // Process all files
+    files.forEach((fileObj) => {
+      extractMutation.mutate(fileObj.file);
+    });
   };
 
   const handleFieldChange = (key: string, value: string) => {
@@ -528,14 +532,15 @@ export default function FaturasUploadPage() {
               >
                 <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
                 <p className="text-lg font-medium mb-2">
-                  Arraste o PDF aqui
+                  Arraste os PDFs aqui
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  ou clique para selecionar o arquivo
+                  ou clique para selecionar os arquivos
                 </p>
                 <input
                   type="file"
                   accept=".pdf"
+                  multiple
                   onChange={handleFileSelect}
                   className="hidden"
                   id="file-upload"
@@ -543,38 +548,45 @@ export default function FaturasUploadPage() {
                 />
                 <Button variant="outline" asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    Selecionar Arquivo
+                    Selecionar Arquivos
                   </label>
                 </Button>
               </div>
 
               {files.length > 0 && (
-                <div className="mt-6">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <span className="flex-1 text-sm truncate">
-                      {files[0].file.name}
-                    </span>
-                    {files[0].status === "pending" && (
+                <div className="mt-6 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      {files.length} arquivo{files.length > 1 ? "s" : ""} selecionado{files.length > 1 ? "s" : ""}
+                    </p>
+                    {files.some(f => f.status === "pending") && (
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
                         onClick={removeFile}
-                        className="h-7 w-7"
+                        className="h-7 text-xs"
                       >
-                        <X className="h-4 w-4" />
+                        Limpar todos
                       </Button>
                     )}
-                    {files[0].status === "uploading" && (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    )}
-                    {files[0].status === "success" && (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    )}
-                    {files[0].status === "error" && (
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                    )}
                   </div>
+                  {files.map((fileObj, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <span className="flex-1 text-sm truncate">
+                        {fileObj.file.name}
+                      </span>
+                      {fileObj.status === "uploading" && (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      )}
+                      {fileObj.status === "success" && (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      )}
+                      {fileObj.status === "error" && (
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
