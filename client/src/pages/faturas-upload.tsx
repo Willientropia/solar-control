@@ -575,7 +575,7 @@ export default function FaturasUploadPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {selectedCliente && (
+                  {selectedCliente && selectedCliente.isPagante && (
                     <div className="mt-2 p-2 rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
                       <p className="text-sm text-blue-900 dark:text-blue-100">
                         <strong>Desconto aplicado:</strong> {selectedCliente.desconto}%
@@ -584,6 +584,13 @@ export default function FaturasUploadPage() {
                             (diferente do padrão da usina: {selectedUsina.descontoPadrao}%)
                           </span>
                         )}
+                      </p>
+                    </div>
+                  )}
+                  {selectedCliente && !selectedCliente.isPagante && (
+                    <div className="mt-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800">
+                      <p className="text-sm text-yellow-900 dark:text-yellow-100">
+                        <strong>Cliente de uso próprio</strong> - Sem receita (apenas custo da concessionária)
                       </p>
                     </div>
                   )}
