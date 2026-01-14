@@ -33,6 +33,7 @@ import {
   Loader2,
   Eye,
   Check,
+  Calculator,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
@@ -84,7 +85,7 @@ interface UploadedFile {
   extractedData?: ExtractedData;
 }
 
-const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "text" | "number" }[] = [
+const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "text" | "number"; readonly?: boolean }[] = [
   { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" },
   { key: "nomeCliente", label: "Nome do Cliente", type: "text" },
   { key: "endereco", label: "Endereço", type: "text" },
@@ -102,7 +103,7 @@ const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "t
   { key: "precoEnergiaCompensada", label: "Preço Energia Compensada (R$)", type: "text" },
   { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado (R$)", type: "text" },
   { key: "precoFioB", label: "Preço Fio B (R$)", type: "text" },
-  { key: "fioB", label: "Fio B (R$)", type: "text" },
+  { key: "fioB", label: "Fio B (R$)", type: "text", readonly: true },
   { key: "precoAdcBandeira", label: "Preço ADC Bandeira (R$)", type: "text" },
   { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública (R$)", type: "text" },
   { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" },
@@ -110,10 +111,10 @@ const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "t
   { key: "cicloGeracao", label: "Ciclo de Geração", type: "text" },
   { key: "ucGeradora", label: "UC Geradora", type: "text" },
   { key: "geracaoUltimoCiclo", label: "Geração Último Ciclo (kWh)", type: "text" },
-  { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text" },
-  { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text" },
-  { key: "economia", label: "Economia (R$)", type: "text" },
-  { key: "lucro", label: "Lucro Estimado (R$)", type: "text" },
+  { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text", readonly: true },
+  { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text", readonly: true },
+  { key: "economia", label: "Economia (R$)", type: "text", readonly: true },
+  { key: "lucro", label: "Lucro Estimado (R$)", type: "text", readonly: true },
 ];
 
 export default function FaturasUploadPage() {
@@ -332,71 +333,78 @@ export default function FaturasUploadPage() {
   };
 
   const handleFieldChange = (key: string, value: string) => {
-    setFormData((prev) => {
-      const newData = { ...prev, [key]: value };
-
-      // Recalculate Lucro if dependent fields change
-      if (key === "valorComDesconto" || key === "valorTotal") {
-        const valComDesconto = parseToNumber(key === "valorComDesconto" ? value : prev.valorComDesconto || "0");
-        const valTotal = parseToNumber(key === "valorTotal" ? value : prev.valorTotal || "0");
-        const lucro = valComDesconto - valTotal;
-        newData.lucro = formatNumber(lucro);
-      }
-
-      return newData;
-    });
+    setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Recalculate values when client is selected
+  // Function to recalculate all calculated fields based on current form values
+  const handleRecalculate = useCallback(() => {
+    if (!selectedClienteId || !selectedCliente) {
+      toast({
+        title: "Selecione um cliente",
+        description: "É necessário selecionar um cliente antes de recalcular.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Get values from form
+    const consumoScee = parseToNumber(formData.consumoScee || "0");
+    const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
+    const valorTotal = parseToNumber(formData.valorTotal || "0");
+    const precoFioB = parseToNumber(formData.precoFioB || "0");
+
+    // Calculate Fio B
+    const fioBValor = consumoScee * precoFioB;
+
+    // Calculate valorSemDesconto
+    const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+
+    let valorComDesconto: number;
+    let economia: number;
+    let lucro: number;
+
+    // Check if client is paying customer or own use (uso próprio)
+    if (!selectedCliente.isPagante) {
+      // Cliente de uso próprio (não pagante):
+      // - Não há receita (valor com desconto = 0)
+      // - Não há economia (economia = 0)
+      // - Lucro é negativo (custo da concessionária)
+      valorComDesconto = 0;
+      economia = 0;
+      lucro = -valorTotal;
+      console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+    } else {
+      // Cliente pagante - cálculo normal com desconto
+      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+      const discountMultiplier = 1 - (clientDiscount / 100);
+      valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+      economia = valorSemDesconto - valorComDesconto;
+      lucro = valorComDesconto - valorTotal;
+      console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+    }
+
+    // Update form data with recalculated values
+    setFormData((prev) => ({
+      ...prev,
+      fioB: formatNumber(fioBValor),
+      valorSemDesconto: formatNumber(valorSemDesconto),
+      valorComDesconto: formatNumber(valorComDesconto),
+      economia: formatNumber(economia),
+      lucro: formatNumber(lucro),
+    }));
+
+    toast({
+      title: "Recalculado!",
+      description: "Os campos foram recalculados com sucesso.",
+    });
+  }, [selectedClienteId, selectedCliente, formData, precoKwh, toast]);
+
+  // Auto-recalculate values when client is selected
   useEffect(() => {
     if (selectedClienteId && selectedCliente && formData.consumoScee) {
-      // Get values from form
-      const consumoScee = parseToNumber(formData.consumoScee || "0");
-      const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
-      const valorTotal = parseToNumber(formData.valorTotal || "0");
-      const precoFioB = parseToNumber(formData.precoFioB || "0");
-
-      // Calculate Fio B
-      const fioBValor = consumoScee * precoFioB;
-
-      // Calculate valorSemDesconto
-      const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
-
-      let valorComDesconto: number;
-      let economia: number;
-      let lucro: number;
-
-      // Check if client is paying customer or own use (uso próprio)
-      if (!selectedCliente.isPagante) {
-        // Cliente de uso próprio (não pagante):
-        // - Não há receita (valor com desconto = 0)
-        // - Não há economia (economia = 0)
-        // - Lucro é negativo (custo da concessionária)
-        valorComDesconto = 0;
-        economia = 0;
-        lucro = -valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
-      } else {
-        // Cliente pagante - cálculo normal com desconto
-        const clientDiscount = parseFloat(selectedCliente.desconto || "0");
-        const discountMultiplier = 1 - (clientDiscount / 100);
-        valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
-        economia = valorSemDesconto - valorComDesconto;
-        lucro = valorComDesconto - valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
-      }
-
-      // Update form data with recalculated values
-      setFormData((prev) => ({
-        ...prev,
-        fioB: formatNumber(fioBValor),
-        valorSemDesconto: formatNumber(valorSemDesconto),
-        valorComDesconto: formatNumber(valorComDesconto),
-        economia: formatNumber(economia),
-        lucro: formatNumber(lucro),
-      }));
+      handleRecalculate();
     }
-  }, [selectedClienteId, selectedCliente, formData.consumoScee, precoKwh]);
+  }, [selectedClienteId, selectedCliente]);
 
   const handleConfirm = () => {
     if (!selectedClienteId) {
@@ -653,7 +661,7 @@ export default function FaturasUploadPage() {
                 </h4>
 
                 <div className="grid gap-3">
-                  {FIELD_CONFIG.map(({ key, label }) => (
+                  {FIELD_CONFIG.map(({ key, label, readonly }) => (
                     <div key={key} className="space-y-1">
                       <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
                         {label}
@@ -663,7 +671,12 @@ export default function FaturasUploadPage() {
                         value={formData[key] || ""}
                         onChange={(e) => handleFieldChange(key, e.target.value)}
                         placeholder={`Informe ${label.toLowerCase()}`}
-                        className="h-8 text-sm"
+                        className={cn(
+                          "h-8 text-sm",
+                          readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground"
+                        )}
+                        readOnly={readonly}
+                        disabled={readonly}
                         data-testid={`input-field-${key}`}
                       />
                     </div>
@@ -692,30 +705,41 @@ export default function FaturasUploadPage() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex justify-between items-center">
             <Button
-              variant="outline"
-              onClick={() => setShowVerificationModal(false)}
+              variant="secondary"
+              onClick={handleRecalculate}
+              disabled={!selectedClienteId}
+              className="mr-auto"
             >
-              Cancelar
+              <Calculator className="h-4 w-4 mr-2" />
+              Recalcular
             </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={!selectedClienteId || confirmMutation.isPending}
-              data-testid="button-confirm-save"
-            >
-              {confirmMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Confirmar e Salvar
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowVerificationModal(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleConfirm}
+                disabled={!selectedClienteId || confirmMutation.isPending}
+                data-testid="button-confirm-save"
+              >
+                {confirmMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Confirmar e Salvar
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
