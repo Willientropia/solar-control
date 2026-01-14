@@ -79,11 +79,16 @@ def generate_relatorio_pdf(data, output_path):
     kwh_gerado = float(data.get('kwhGerado', 0) or 0)
     kwh_previsto = float(data.get('kwhPrevisto', 1) or 1)
     percentual = (kwh_gerado / kwh_previsto * 100) if kwh_previsto > 0 else 0
-    
+
+    # Get potencia and monthly predicted generation
+    potencia_kwp = float(data.get('potenciaKwp', 0) or 0)
+    kwh_previsto_mensal = float(data.get('kwhPrevistoMensal', 0) or 0)
+
     template_data = {
         'logo_base64': logo_base64,
         'nome_usina': data.get('nomeUsina', ''),
-        'uc_matriz': data.get('ucMatriz', ''),
+        'potencia_kwp': format_number(potencia_kwp) if potencia_kwp > 0 else '-',
+        'kwh_previsto_mensal': format_number(kwh_previsto_mensal) if kwh_previsto_mensal > 0 else '-',
         'periodo': data.get('periodo', ''),
         'kwh_gerado': format_number(kwh_gerado),
         'percentual_gerado': format_number(percentual),
