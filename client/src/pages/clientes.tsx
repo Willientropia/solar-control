@@ -63,6 +63,9 @@ export default function ClientesPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<ClienteWithUsina | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [clienteToDelete, setClienteToDelete] = useState<ClienteWithUsina | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const { data: clientes = [], isLoading } = useQuery<ClienteWithUsina[]>({
     queryKey: ["/api/clientes"],
@@ -131,6 +134,9 @@ export default function ClientesPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/clientes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clientes"] });
+      setDeleteDialogOpen(false);
+      setClienteToDelete(null);
+      setDeleteConfirmText("");
       toast({ title: "Cliente removido com sucesso!" });
     },
     onError: () => {
@@ -174,6 +180,24 @@ export default function ClientesPage() {
     setIsDialogOpen(false);
     setEditingCliente(null);
     form.reset();
+  };
+
+  const handleOpenDeleteDialog = (cliente: ClienteWithUsina) => {
+    setClienteToDelete(cliente);
+    setDeleteConfirmText("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setClienteToDelete(null);
+    setDeleteConfirmText("");
+  };
+
+  const handleConfirmDelete = () => {
+    if (clienteToDelete && deleteConfirmText === "Confirmar") {
+      deleteMutation.mutate(clienteToDelete.id);
+    }
   };
 
   const columns = [
@@ -246,9 +270,7 @@ export default function ClientesPage() {
             size="icon"
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm("Deseja realmente excluir este cliente?")) {
-                deleteMutation.mutate(cliente.id);
-              }
+              handleOpenDeleteDialog(cliente);
             }}
             data-testid={`button-delete-cliente-${cliente.id}`}
           >
@@ -502,6 +524,57 @@ export default function ClientesPage() {
           </Dialog>
         }
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Você está prestes a excluir o cliente{" "}
+              <strong className="text-foreground">{clienteToDelete?.nome}</strong>.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Esta ação não pode ser desfeita. Todos os dados relacionados a este
+              cliente, incluindo faturas, serão permanentemente removidos.
+            </p>
+            <div className="space-y-2">
+              <label htmlFor="delete-confirm" className="text-sm font-medium">
+                Para confirmar, digite <strong>"Confirmar"</strong> abaixo:
+              </label>
+              <Input
+                id="delete-confirm"
+                type="text"
+                placeholder="Digite: Confirmar"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                data-testid="input-delete-confirm"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseDeleteDialog}
+                disabled={deleteMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmDelete}
+                disabled={deleteConfirmText !== "Confirmar" || deleteMutation.isPending}
+                data-testid="button-confirm-delete"
+              >
+                {deleteMutation.isPending ? "Excluindo..." : "Excluir Cliente"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {clientes.length === 0 && !isLoading ? (
         <Card>
