@@ -461,7 +461,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? valorSemDescontoFrontend
         : valorSemDescontoCalculado;
 
-       let economia: number;
        let lucroCalculado: number;
 
        // Check if client is paying customer or own use (uso próprio)
