@@ -337,7 +337,7 @@ export default function FaturasUploadPage() {
   };
 
   // Function to recalculate all calculated fields based on current form values
-  const handleRecalculate = useCallback(() => {
+  const handleRecalculate = () => {
     if (!selectedClienteId || !selectedCliente) {
       toast({
         title: "Selecione um cliente",
@@ -347,57 +347,73 @@ export default function FaturasUploadPage() {
       return;
     }
 
-    // Get values from form
-    const consumoScee = parseToNumber(formData.consumoScee || "0");
-    const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
-    const valorTotal = parseToNumber(formData.valorTotal || "0");
-    const precoFioB = parseToNumber(formData.precoFioB || "0");
+    // Get values from form - using setFormData callback to ensure we get the latest values
+    setFormData((currentFormData) => {
+      // Get values from current form state
+      const consumoScee = parseToNumber(currentFormData.consumoScee || "0");
+      const precoKwhUsado = parseToNumber(currentFormData.precoKwhUsado || precoKwh);
+      const valorTotal = parseToNumber(currentFormData.valorTotal || "0");
+      const precoFioB = parseToNumber(currentFormData.precoFioB || "0");
 
-    // Calculate Fio B
-    const fioBValor = consumoScee * precoFioB;
+      console.log("=== RECÁLCULO ===");
+      console.log("Consumo SCEE:", consumoScee);
+      console.log("Preço kWh:", precoKwhUsado);
+      console.log("Valor Total:", valorTotal);
+      console.log("Preço Fio B:", precoFioB);
 
-    // Calculate valorSemDesconto
-    const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+      // Calculate Fio B
+      const fioBValor = consumoScee * precoFioB;
 
-    let valorComDesconto: number;
-    let economia: number;
-    let lucro: number;
+      // Calculate valorSemDesconto
+      const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
 
-    // Check if client is paying customer or own use (uso próprio)
-    if (!selectedCliente.isPagante) {
-      // Cliente de uso próprio (não pagante):
-      // - Não há receita (valor com desconto = 0)
-      // - Não há economia (economia = 0)
-      // - Lucro é negativo (custo da concessionária)
-      valorComDesconto = 0;
-      economia = 0;
-      lucro = -valorTotal;
-      console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
-    } else {
-      // Cliente pagante - cálculo normal com desconto
-      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
-      const discountMultiplier = 1 - (clientDiscount / 100);
-      valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
-      economia = valorSemDesconto - valorComDesconto;
-      lucro = valorComDesconto - valorTotal;
-      console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
-    }
+      let valorComDesconto: number;
+      let economia: number;
+      let lucro: number;
 
-    // Update form data with recalculated values
-    setFormData((prev) => ({
-      ...prev,
-      fioB: formatNumber(fioBValor),
-      valorSemDesconto: formatNumber(valorSemDesconto),
-      valorComDesconto: formatNumber(valorComDesconto),
-      economia: formatNumber(economia),
-      lucro: formatNumber(lucro),
-    }));
+      // Check if client is paying customer or own use (uso próprio)
+      if (!selectedCliente.isPagante) {
+        // Cliente de uso próprio (não pagante):
+        // - Não há receita (valor com desconto = 0)
+        // - Não há economia (economia = 0)
+        // - Lucro é negativo (custo da concessionária)
+        valorComDesconto = 0;
+        economia = 0;
+        lucro = -valorTotal;
+        console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+      } else {
+        // Cliente pagante - cálculo normal com desconto
+        const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+        const discountMultiplier = 1 - (clientDiscount / 100);
+        valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+        economia = valorSemDesconto - valorComDesconto;
+        lucro = valorComDesconto - valorTotal;
+        console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+      }
+
+      console.log("Fio B:", fioBValor);
+      console.log("Valor Sem Desconto:", valorSemDesconto);
+      console.log("Valor Com Desconto:", valorComDesconto);
+      console.log("Economia:", economia);
+      console.log("Lucro:", lucro);
+      console.log("================");
+
+      // Return updated form data with recalculated values
+      return {
+        ...currentFormData,
+        fioB: formatNumber(fioBValor),
+        valorSemDesconto: formatNumber(valorSemDesconto),
+        valorComDesconto: formatNumber(valorComDesconto),
+        economia: formatNumber(economia),
+        lucro: formatNumber(lucro),
+      };
+    });
 
     toast({
       title: "Recalculado!",
       description: "Os campos foram recalculados com sucesso.",
     });
-  }, [selectedClienteId, selectedCliente, formData, precoKwh, toast]);
+  };
 
   // Auto-recalculate values when client is selected
   useEffect(() => {
