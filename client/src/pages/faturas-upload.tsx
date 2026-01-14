@@ -41,6 +41,7 @@ import {
   Check,
   Calculator,
   Info,
+  Save,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
@@ -180,6 +181,8 @@ export default function FaturasUploadPage() {
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
   const [pendingConfirmData, setPendingConfirmData] = useState<any>(null);
   const [showSaveAllDialog, setShowSaveAllDialog] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [saveAllProgress, setSaveAllProgress] = useState({ current: 0, total: 0 });
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -564,6 +567,145 @@ export default function FaturasUploadPage() {
     setPendingConfirmData(null);
   };
 
+  const handleSaveAll = async () => {
+    // Validate that all faturas have a client selected
+    const faturasWithoutCliente = pendingFaturas.filter(f => !f.selectedClienteId);
+
+    if (faturasWithoutCliente.length > 0) {
+      toast({
+        title: "Faturas sem cliente",
+        description: `${faturasWithoutCliente.length} fatura(s) não possuem cliente vinculado. Por favor, vincule todos os clientes antes de salvar em lote.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShowSaveAllDialog(false);
+    setIsSavingAll(true);
+
+    const unsavedFaturas = pendingFaturas
+      .map((f, index) => ({ ...f, originalIndex: index }))
+      .filter(f => !f.saved);
+
+    setSaveAllProgress({ current: 0, total: unsavedFaturas.length });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < unsavedFaturas.length; i++) {
+      const fatura = unsavedFaturas[i];
+      setSaveAllProgress({ current: i + 1, total: unsavedFaturas.length });
+
+      try {
+        const normalizedData: Record<string, string> = {};
+
+        const numericFields = [
+          "consumoKwh", "consumoScee", "consumoNaoCompensado", "energiaInjetada",
+          "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhNaoCompensado",
+          "precoFioB", "precoAdcBandeira", "contribuicaoIluminacao", "valorTotal",
+          "saldoKwh", "geracaoUltimoCiclo", "valorSemDesconto", "valorComDesconto",
+          "economia", "lucro", "leituraAnterior", "leituraAtual", "quantidadeDias",
+          "precoKwhUsado"
+        ];
+
+        Object.entries(fatura.formData).forEach(([key, value]) => {
+          if (numericFields.includes(key)) {
+            const num = parseToNumber(value);
+            normalizedData[key] = isNaN(num) ? "0.00" : num.toFixed(2);
+          } else {
+            normalizedData[key] = value;
+          }
+        });
+
+        const response = await fetch("/api/faturas/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            extractedData: { ...normalizedData, fileUrl: fatura.pdfUrl },
+            clienteId: fatura.selectedClienteId,
+            forceReplace: false,
+          }),
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+
+          // If it's a duplicate (409), stop the batch process and let user decide
+          if (response.status === 409 && errorData.conflict) {
+            setIsSavingAll(false);
+            setCurrentFaturaIndex(fatura.originalIndex);
+            setDuplicateInfo(errorData.existingFatura);
+            setPendingConfirmData({
+              extractedData: fatura.formData,
+              clienteId: fatura.selectedClienteId,
+              fileUrl: fatura.pdfUrl,
+            });
+            setShowDuplicateDialog(true);
+
+            toast({
+              title: "Duplicata encontrada",
+              description: `A fatura "${fatura.fileName}" já existe. Por favor, decida se deseja substituir.`,
+              variant: "destructive",
+            });
+
+            return; // Stop the batch process
+          }
+
+          throw new Error(errorData.message || "Erro ao salvar fatura");
+        }
+
+        // Mark this fatura as saved
+        setPendingFaturas((prev) =>
+          prev.map((f, idx) =>
+            idx === fatura.originalIndex ? { ...f, saved: true } : f
+          )
+        );
+
+        successCount++;
+      } catch (error: any) {
+        console.error(`Erro ao salvar ${fatura.fileName}:`, error);
+        errorCount++;
+
+        toast({
+          title: "Erro ao salvar",
+          description: `Erro ao salvar "${fatura.fileName}": ${error.message}`,
+          variant: "destructive",
+        });
+      }
+    }
+
+    // Invalidate queries after all saves
+    queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+
+    setIsSavingAll(false);
+    setSaveAllProgress({ current: 0, total: 0 });
+
+    // Check if all are now saved
+    const allSaved = pendingFaturas.every((f, i) => {
+      const wasJustSaved = unsavedFaturas.some(uf => uf.originalIndex === i);
+      return wasJustSaved || f.saved;
+    });
+
+    if (allSaved && errorCount === 0) {
+      toast({
+        title: "Sucesso!",
+        description: `Todas as ${successCount} faturas foram salvas com sucesso.`,
+      });
+
+      // Close modal and reset
+      setShowVerificationModal(false);
+      setPendingFaturas([]);
+      setCurrentFaturaIndex(0);
+      setFiles([]);
+    } else if (successCount > 0) {
+      toast({
+        title: "Salvamento parcial",
+        description: `${successCount} fatura(s) salva(s) com sucesso. ${errorCount} erro(s).`,
+      });
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <PageHeader
@@ -886,7 +1028,7 @@ export default function FaturasUploadPage() {
               {pendingFaturas.length > 1 && (
                 <Button
                   onClick={() => setShowSaveAllDialog(true)}
-                  disabled={confirmMutation.isPending}
+                  disabled={confirmMutation.isPending || isSavingAll}
                   variant="secondary"
                 >
                   <Save className="h-4 w-4 mr-2" />
@@ -895,7 +1037,7 @@ export default function FaturasUploadPage() {
               )}
               <Button
                 onClick={handleConfirm}
-                disabled={!selectedClienteId || confirmMutation.isPending}
+                disabled={!selectedClienteId || confirmMutation.isPending || isSavingAll}
                 data-testid="button-confirm-save"
               >
                 {confirmMutation.isPending ? (
@@ -978,18 +1120,37 @@ export default function FaturasUploadPage() {
             <DialogTitle>Confirmar Salvamento em Lote</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Você está prestes a salvar <strong className="text-foreground">{pendingFaturas.length} faturas</strong> de uma vez.
-            </p>
+            {isSavingAll ? (
+              <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">
+                      Salvando faturas...
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Progresso: {saveAllProgress.current} de {saveAllProgress.total}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Você está prestes a salvar <strong className="text-foreground">{pendingFaturas.length} faturas</strong> de uma vez.
+              </p>
+            )}
             <div className="p-4 bg-muted rounded-lg space-y-2 max-h-60 overflow-y-auto">
               <h4 className="font-medium text-sm mb-2">Faturas a serem salvas:</h4>
               {pendingFaturas.map((fatura, index) => {
                 const cliente = clientes.find((c) => c.id === fatura.selectedClienteId);
                 return (
                   <div key={fatura.id} className="text-sm flex items-center justify-between py-1 border-b last:border-0">
-                    <span>
-                      {index + 1}. {fatura.fileName}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {fatura.saved && <Check className="h-4 w-4 text-green-500" />}
+                      <span className={cn(fatura.saved && "text-muted-foreground")}>
+                        {index + 1}. {fatura.fileName}
+                      </span>
+                    </div>
                     {cliente ? (
                       <span className="text-xs text-muted-foreground">
                         {cliente.nome}
@@ -1011,21 +1172,25 @@ export default function FaturasUploadPage() {
             <Button
               variant="outline"
               onClick={() => setShowSaveAllDialog(false)}
+              disabled={isSavingAll}
             >
               Cancelar
             </Button>
             <Button
-              onClick={() => {
-                // TODO: Implement save all logic
-                setShowSaveAllDialog(false);
-                toast({
-                  title: "Funcionalidade em desenvolvimento",
-                  description: "O salvamento em lote será implementado em breve.",
-                });
-              }}
+              onClick={handleSaveAll}
+              disabled={isSavingAll}
             >
-              <Save className="h-4 w-4 mr-2" />
-              Confirmar e Salvar Todas
+              {isSavingAll ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando {saveAllProgress.current}/{saveAllProgress.total}...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Confirmar e Salvar Todas
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
