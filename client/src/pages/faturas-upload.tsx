@@ -223,10 +223,16 @@ export default function FaturasUploadPage() {
         }
       });
 
-      const response = await apiRequest("POST", "/api/faturas/confirm", {
-        extractedData: { ...normalizedData, fileUrl: data.fileUrl },
-        clienteId: data.clienteId,
-        forceReplace: data.forceReplace || false,
+      // Use fetch directly to handle 409 conflicts without throwing
+      const response = await fetch("/api/faturas/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          extractedData: { ...normalizedData, fileUrl: data.fileUrl },
+          clienteId: data.clienteId,
+          forceReplace: data.forceReplace || false,
+        }),
+        credentials: "include",
       });
 
       // Check if response is conflict (409)
