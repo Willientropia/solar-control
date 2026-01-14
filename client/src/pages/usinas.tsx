@@ -34,6 +34,7 @@ const usinaFormSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
   unidadeConsumidora: z.string().min(1, "UC é obrigatória"),
   producaoMensalPrevista: z.string().min(1, "Produção prevista é obrigatória"),
+  potenciaKwp: z.string().optional(),
   descontoPadrao: z.string().default("15"),
   endereco: z.string().optional(),
 });
@@ -56,6 +57,7 @@ export default function UsinasPage() {
       nome: "",
       unidadeConsumidora: "",
       producaoMensalPrevista: "",
+      potenciaKwp: "",
       descontoPadrao: "15",
       endereco: "",
     },
@@ -66,6 +68,7 @@ export default function UsinasPage() {
       apiRequest("POST", "/api/usinas", {
         ...data,
         producaoMensalPrevista: data.producaoMensalPrevista,
+        potenciaKwp: data.potenciaKwp,
         descontoPadrao: data.descontoPadrao,
       }),
     onSuccess: () => {
@@ -85,6 +88,7 @@ export default function UsinasPage() {
         nome: data.nome,
         unidadeConsumidora: data.unidadeConsumidora,
         producaoMensalPrevista: data.producaoMensalPrevista,
+        potenciaKwp: data.potenciaKwp,
         descontoPadrao: data.descontoPadrao,
         endereco: data.endereco,
       }),
@@ -115,6 +119,7 @@ export default function UsinasPage() {
     const formattedData = {
       ...data,
       producaoMensalPrevista: parseToNumber(data.producaoMensalPrevista).toFixed(2),
+      potenciaKwp: data.potenciaKwp ? parseToNumber(data.potenciaKwp).toFixed(3) : undefined,
       descontoPadrao: parseToNumber(data.descontoPadrao).toFixed(2),
     };
 
@@ -131,6 +136,7 @@ export default function UsinasPage() {
       nome: usina.nome,
       unidadeConsumidora: usina.unidadeConsumidora,
       producaoMensalPrevista: formatNumber(usina.producaoMensalPrevista),
+      potenciaKwp: usina.potenciaKwp ? formatNumber(usina.potenciaKwp) : "",
       descontoPadrao: formatNumber(usina.descontoPadrao),
       endereco: usina.endereco || "",
     });
@@ -167,6 +173,15 @@ export default function UsinasPage() {
       cell: (usina: Usina) => (
         <span className="font-mono">
           {formatNumber(usina.producaoMensalPrevista)} kWh
+        </span>
+      ),
+    },
+    {
+      key: "potencia",
+      header: "Potência",
+      cell: (usina: Usina) => (
+        <span className="font-mono">
+          {usina.potenciaKwp ? `${formatNumber(usina.potenciaKwp)} kWp` : "-"}
         </span>
       ),
     },
@@ -282,6 +297,24 @@ export default function UsinasPage() {
                             placeholder="Ex: 10000"
                             {...field}
                             data-testid="input-usina-producao"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="potenciaKwp"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Potência (kWp) - opcional</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            placeholder="Ex: 50,5"
+                            {...field}
+                            data-testid="input-usina-potencia"
                           />
                         </FormControl>
                         <FormMessage />
