@@ -952,15 +952,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseBrazilianNumber(g.kwhGerado), 0);
       // Use producaoMensalPrevista from usina, multiply by number of months
-      const kwhPrevisto = parseBrazilianNumber(usina.producaoMensalPrevista) * selectedMonths.length || 1;
-      
-      const periodo = selectedMonths.length === 1 
-        ? selectedMonths[0] 
+      const kwhPrevistoMensal = parseBrazilianNumber(usina.producaoMensalPrevista);
+      const kwhPrevisto = kwhPrevistoMensal * selectedMonths.length || 1;
+
+      const periodo = selectedMonths.length === 1
+        ? selectedMonths[0]
         : `${selectedMonths[selectedMonths.length - 1]} a ${selectedMonths[0]}`;
-      
+
       const reportData = {
         nomeUsina: usina.nome,
-        ucMatriz: usina.unidadeConsumidora,
+        potenciaKwp: usina.potenciaKwp ? parseBrazilianNumber(usina.potenciaKwp) : 0,
+        kwhPrevistoMensal: kwhPrevistoMensal,
         periodo,
         kwhGerado,
         kwhPrevisto,
