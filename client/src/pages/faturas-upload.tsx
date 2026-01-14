@@ -92,6 +92,15 @@ interface UploadedFile {
   extractedData?: ExtractedData;
 }
 
+interface PendingFatura {
+  id: string;
+  fileName: string;
+  formData: Record<string, string>;
+  pdfUrl: string;
+  selectedClienteId: string;
+  saved: boolean;
+}
+
 const FIELD_CONFIG: {
   key: keyof ExtractedData | "fioB";
   label: string;
@@ -165,12 +174,12 @@ export default function FaturasUploadPage() {
   const [precoKwh, setPrecoKwh] = useState<string>("1.20");
   const [isDragging, setIsDragging] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [pdfUrl, setPdfUrl] = useState<string>("");
-  const [selectedClienteId, setSelectedClienteId] = useState<string>("");
+  const [pendingFaturas, setPendingFaturas] = useState<PendingFatura[]>([]);
+  const [currentFaturaIndex, setCurrentFaturaIndex] = useState<number>(0);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
   const [pendingConfirmData, setPendingConfirmData] = useState<any>(null);
+  const [showSaveAllDialog, setShowSaveAllDialog] = useState(false);
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -182,18 +191,31 @@ export default function FaturasUploadPage() {
 
   const filteredClientes = clientes.filter((c) => c.usinaId === selectedUsinaId);
   const selectedUsina = usinas.find((u) => u.id === selectedUsinaId);
+
+  // Get current fatura data
+  const currentFatura = pendingFaturas[currentFaturaIndex];
+  const formData = currentFatura?.formData || {};
+  const pdfUrl = currentFatura?.pdfUrl || "";
+  const selectedClienteId = currentFatura?.selectedClienteId || "";
   const selectedCliente = clientes.find((c) => c.id === selectedClienteId);
+
+  // Helper to update current fatura
+  const updateCurrentFatura = (updates: Partial<PendingFatura>) => {
+    setPendingFaturas((prev) =>
+      prev.map((f, i) => (i === currentFaturaIndex ? { ...f, ...updates } : f))
+    );
+  };
 
   const extractMutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("precoKwh", precoKwh);
-      formData.append("desconto", selectedUsina?.descontoPadrao || "25");
+      const formDataToSend = new FormData();
+      formDataToSend.append("file", file);
+      formDataToSend.append("precoKwh", precoKwh);
+      formDataToSend.append("desconto", selectedUsina?.descontoPadrao || "25");
 
       const response = await fetch("/api/faturas/extract", {
         method: "POST",
-        body: formData,
+        body: formDataToSend,
         credentials: "include",
       });
 
@@ -202,9 +224,10 @@ export default function FaturasUploadPage() {
         throw new Error(error.message || "Erro ao extrair dados");
       }
 
-      return response.json();
+      const data = await response.json();
+      return { file, data };
     },
-    onSuccess: (data: ExtractedData) => {
+    onSuccess: ({ file, data }: { file: File; data: ExtractedData }) => {
       const initialFormData: Record<string, string> = {};
       FIELD_CONFIG.forEach(({ key }) => {
         const value = data[key];
@@ -216,19 +239,28 @@ export default function FaturasUploadPage() {
           ? data.precoKwhUsado
           : precoKwh
       );
-      setFormData(initialFormData);
-      setPdfUrl(data.fileUrl || "");
-      
+
       const matchedCliente = filteredClientes.find(
         (c) => c.unidadeConsumidora === data.unidadeConsumidora
       );
-      if (matchedCliente) {
-        setSelectedClienteId(matchedCliente.id);
-      } else {
-        setSelectedClienteId("");
+
+      // Add to pending faturas
+      setPendingFaturas((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          formData: initialFormData,
+          pdfUrl: data.fileUrl || "",
+          selectedClienteId: matchedCliente?.id || "",
+          saved: false,
+        },
+      ]);
+
+      // If this is the first fatura, open the modal
+      if (pendingFaturas.length === 0) {
+        setShowVerificationModal(true);
       }
-      
-      setShowVerificationModal(true);
     },
     onError: (error: Error) => {
       toast({
@@ -289,15 +321,36 @@ export default function FaturasUploadPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+
+      // Mark current fatura as saved
+      updateCurrentFatura({ saved: true });
+
       toast({
         title: "Fatura salva!",
         description: "Os dados foram salvos com sucesso.",
       });
-      setShowVerificationModal(false);
-      setFormData({});
-      setPdfUrl("");
-      setFiles([]);
-      setSelectedClienteId("");
+
+      // Check if all faturas are saved
+      const allSaved = pendingFaturas.every((f, i) =>
+        i === currentFaturaIndex ? true : f.saved
+      );
+
+      if (allSaved) {
+        // All done, close modal and reset
+        setShowVerificationModal(false);
+        setPendingFaturas([]);
+        setCurrentFaturaIndex(0);
+        setFiles([]);
+      } else {
+        // Move to next unsaved fatura
+        const nextIndex = pendingFaturas.findIndex((f, i) =>
+          i > currentFaturaIndex && !f.saved
+        );
+        if (nextIndex !== -1) {
+          setCurrentFaturaIndex(nextIndex);
+        }
+      }
+
       setPendingConfirmData(null);
     },
     onError: (error: any) => {
@@ -332,13 +385,14 @@ export default function FaturasUploadPage() {
       (file) => file.type === "application/pdf"
     );
     if (droppedFiles.length > 0) {
-      setFiles([{ file: droppedFiles[0], status: "pending" }]);
+      setFiles(droppedFiles.map(file => ({ file, status: "pending" as const })));
     }
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFiles([{ file: e.target.files[0], status: "pending" }]);
+    if (e.target.files && e.target.files.length > 0) {
+      const fileArray = Array.from(e.target.files);
+      setFiles(fileArray.map(file => ({ file, status: "pending" as const })));
     }
   };
 
@@ -350,7 +404,7 @@ export default function FaturasUploadPage() {
     if (files.length === 0) {
       toast({
         title: "Selecione um arquivo",
-        description: "Adicione um arquivo PDF para continuar.",
+        description: "Adicione pelo menos um arquivo PDF para continuar.",
         variant: "destructive",
       });
       return;
@@ -369,11 +423,20 @@ export default function FaturasUploadPage() {
       prev.map((f) => ({ ...f, status: "uploading" as const }))
     );
 
-    extractMutation.mutate(files[0].file);
+    // Process all files
+    files.forEach((fileObj) => {
+      extractMutation.mutate(fileObj.file);
+    });
   };
 
   const handleFieldChange = (key: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+    updateCurrentFatura({
+      formData: { ...formData, [key]: value },
+    });
+  };
+
+  const handleClienteChange = (clienteId: string) => {
+    updateCurrentFatura({ selectedClienteId: clienteId });
   };
 
   // Function to recalculate all calculated fields based on current form values
@@ -387,66 +450,66 @@ export default function FaturasUploadPage() {
       return;
     }
 
-    // Get values from form - using setFormData callback to ensure we get the latest values
-    setFormData((currentFormData) => {
-      // Get values from current form state
-      const consumoScee = parseToNumber(currentFormData.consumoScee || "0");
-      const precoKwhUsado = parseToNumber(currentFormData.precoKwhUsado || precoKwh);
-      const valorTotal = parseToNumber(currentFormData.valorTotal || "0");
-      const precoFioB = parseToNumber(currentFormData.precoFioB || "0");
+    // Get values from current form data
+    const currentFormData = formData;
+    const consumoScee = parseToNumber(currentFormData.consumoScee || "0");
+    const precoKwhUsado = parseToNumber(currentFormData.precoKwhUsado || precoKwh);
+    const valorTotal = parseToNumber(currentFormData.valorTotal || "0");
+    const precoFioB = parseToNumber(currentFormData.precoFioB || "0");
 
-      console.log("=== RECÁLCULO ===");
-      console.log("Consumo SCEE:", consumoScee);
-      console.log("Preço kWh:", precoKwhUsado);
-      console.log("Valor Total:", valorTotal);
-      console.log("Preço Fio B:", precoFioB);
+    console.log("=== RECÁLCULO ===");
+    console.log("Consumo SCEE:", consumoScee);
+    console.log("Preço kWh:", precoKwhUsado);
+    console.log("Valor Total:", valorTotal);
+    console.log("Preço Fio B:", precoFioB);
 
-      // Calculate Fio B
-      const fioBValor = consumoScee * precoFioB;
+    // Calculate Fio B
+    const fioBValor = consumoScee * precoFioB;
 
-      // Calculate valorSemDesconto
-      const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+    // Calculate valorSemDesconto
+    const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
 
-      let valorComDesconto: number;
-      let economia: number;
-      let lucro: number;
+    let valorComDesconto: number;
+    let economia: number;
+    let lucro: number;
 
-      // Check if client is paying customer or own use (uso próprio)
-      if (!selectedCliente.isPagante) {
-        // Cliente de uso próprio (não pagante):
-        // - Não há receita (valor com desconto = 0)
-        // - Não há economia (economia = 0)
-        // - Lucro é negativo (custo da concessionária)
-        valorComDesconto = 0;
-        economia = 0;
-        lucro = -valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
-      } else {
-        // Cliente pagante - cálculo normal com desconto
-        const clientDiscount = parseFloat(selectedCliente.desconto || "0");
-        const discountMultiplier = 1 - (clientDiscount / 100);
-        valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
-        economia = valorSemDesconto - valorComDesconto;
-        lucro = valorComDesconto - valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
-      }
+    // Check if client is paying customer or own use (uso próprio)
+    if (!selectedCliente.isPagante) {
+      // Cliente de uso próprio (não pagante):
+      // - Não há receita (valor com desconto = 0)
+      // - Não há economia (economia = 0)
+      // - Lucro é negativo (custo da concessionária)
+      valorComDesconto = 0;
+      economia = 0;
+      lucro = -valorTotal;
+      console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+    } else {
+      // Cliente pagante - cálculo normal com desconto
+      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+      const discountMultiplier = 1 - (clientDiscount / 100);
+      valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+      economia = valorSemDesconto - valorComDesconto;
+      lucro = valorComDesconto - valorTotal;
+      console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+    }
 
-      console.log("Fio B:", fioBValor);
-      console.log("Valor Sem Desconto:", valorSemDesconto);
-      console.log("Valor Com Desconto:", valorComDesconto);
-      console.log("Economia:", economia);
-      console.log("Lucro:", lucro);
-      console.log("================");
+    console.log("Fio B:", fioBValor);
+    console.log("Valor Sem Desconto:", valorSemDesconto);
+    console.log("Valor Com Desconto:", valorComDesconto);
+    console.log("Economia:", economia);
+    console.log("Lucro:", lucro);
+    console.log("================");
 
-      // Return updated form data with recalculated values
-      return {
+    // Update current fatura with recalculated values
+    updateCurrentFatura({
+      formData: {
         ...currentFormData,
         fioB: formatNumber(fioBValor),
         valorSemDesconto: formatNumber(valorSemDesconto),
         valorComDesconto: formatNumber(valorComDesconto),
         economia: formatNumber(economia),
         lucro: formatNumber(lucro),
-      };
+      },
     });
 
     toast({
@@ -528,14 +591,15 @@ export default function FaturasUploadPage() {
               >
                 <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
                 <p className="text-lg font-medium mb-2">
-                  Arraste o PDF aqui
+                  Arraste os PDFs aqui
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  ou clique para selecionar o arquivo
+                  ou clique para selecionar os arquivos
                 </p>
                 <input
                   type="file"
                   accept=".pdf"
+                  multiple
                   onChange={handleFileSelect}
                   className="hidden"
                   id="file-upload"
@@ -543,38 +607,45 @@ export default function FaturasUploadPage() {
                 />
                 <Button variant="outline" asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    Selecionar Arquivo
+                    Selecionar Arquivos
                   </label>
                 </Button>
               </div>
 
               {files.length > 0 && (
-                <div className="mt-6">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <span className="flex-1 text-sm truncate">
-                      {files[0].file.name}
-                    </span>
-                    {files[0].status === "pending" && (
+                <div className="mt-6 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      {files.length} arquivo{files.length > 1 ? "s" : ""} selecionado{files.length > 1 ? "s" : ""}
+                    </p>
+                    {files.some(f => f.status === "pending") && (
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
                         onClick={removeFile}
-                        className="h-7 w-7"
+                        className="h-7 text-xs"
                       >
-                        <X className="h-4 w-4" />
+                        Limpar todos
                       </Button>
                     )}
-                    {files[0].status === "uploading" && (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    )}
-                    {files[0].status === "success" && (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    )}
-                    {files[0].status === "error" && (
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                    )}
                   </div>
+                  {files.map((fileObj, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <span className="flex-1 text-sm truncate">
+                        {fileObj.file.name}
+                      </span>
+                      {fileObj.status === "uploading" && (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      )}
+                      {fileObj.status === "success" && (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      )}
+                      {fileObj.status === "error" && (
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -666,8 +737,28 @@ export default function FaturasUploadPage() {
             <DialogTitle>Verificar Dados Extraídos</DialogTitle>
             <DialogDescription>
               Confira e edite os dados extraídos da fatura antes de salvar.
+              {pendingFaturas.length > 1 && (
+                <span className="ml-2 font-medium">
+                  ({pendingFaturas.length} faturas carregadas)
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
+
+          {pendingFaturas.length > 1 && (
+            <Tabs value={currentFaturaIndex.toString()} onValueChange={(v) => setCurrentFaturaIndex(parseInt(v))}>
+              <TabsList className="w-full grid" style={{ gridTemplateColumns: `repeat(${pendingFaturas.length}, 1fr)` }}>
+                {pendingFaturas.map((fatura, index) => (
+                  <TabsTrigger key={fatura.id} value={index.toString()} className="text-xs">
+                    {fatura.fileName.length > 20
+                      ? `${fatura.fileName.substring(0, 17)}...`
+                      : fatura.fileName}
+                    {fatura.saved && <Check className="ml-1 h-3 w-3 text-green-500" />}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
             <ScrollArea className="h-[550px] pr-4">
@@ -676,7 +767,7 @@ export default function FaturasUploadPage() {
                   <Label>Vincular ao Cliente</Label>
                   <Select
                     value={selectedClienteId}
-                    onValueChange={setSelectedClienteId}
+                    onValueChange={handleClienteChange}
                   >
                     <SelectTrigger data-testid="select-cliente-fatura">
                       <SelectValue placeholder="Selecione o cliente" />
@@ -792,6 +883,16 @@ export default function FaturasUploadPage() {
               >
                 Cancelar
               </Button>
+              {pendingFaturas.length > 1 && (
+                <Button
+                  onClick={() => setShowSaveAllDialog(true)}
+                  disabled={confirmMutation.isPending}
+                  variant="secondary"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar Todas ({pendingFaturas.length})
+                </Button>
+              )}
               <Button
                 onClick={handleConfirm}
                 disabled={!selectedClienteId || confirmMutation.isPending}
@@ -805,7 +906,7 @@ export default function FaturasUploadPage() {
                 ) : (
                   <>
                     <Check className="h-4 w-4 mr-2" />
-                    Confirmar e Salvar
+                    {pendingFaturas.length > 1 ? "Salvar Esta" : "Confirmar e Salvar"}
                   </>
                 )}
               </Button>
@@ -865,6 +966,66 @@ export default function FaturasUploadPage() {
               ) : (
                 <>Confirmar Substituição</>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save All Confirmation Dialog */}
+      <Dialog open={showSaveAllDialog} onOpenChange={setShowSaveAllDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Salvamento em Lote</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Você está prestes a salvar <strong className="text-foreground">{pendingFaturas.length} faturas</strong> de uma vez.
+            </p>
+            <div className="p-4 bg-muted rounded-lg space-y-2 max-h-60 overflow-y-auto">
+              <h4 className="font-medium text-sm mb-2">Faturas a serem salvas:</h4>
+              {pendingFaturas.map((fatura, index) => {
+                const cliente = clientes.find((c) => c.id === fatura.selectedClienteId);
+                return (
+                  <div key={fatura.id} className="text-sm flex items-center justify-between py-1 border-b last:border-0">
+                    <span>
+                      {index + 1}. {fatura.fileName}
+                    </span>
+                    {cliente ? (
+                      <span className="text-xs text-muted-foreground">
+                        {cliente.nome}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-destructive">
+                        Sem cliente
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-sm text-yellow-600 dark:text-yellow-500 font-medium">
+              ⚠️ Certifique-se de que todas as faturas estão vinculadas aos clientes corretos antes de prosseguir.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSaveAllDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                // TODO: Implement save all logic
+                setShowSaveAllDialog(false);
+                toast({
+                  title: "Funcionalidade em desenvolvimento",
+                  description: "O salvamento em lote será implementado em breve.",
+                });
+              }}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Confirmar e Salvar Todas
             </Button>
           </DialogFooter>
         </DialogContent>
