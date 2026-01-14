@@ -918,7 +918,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         }
       }
-      
+
+      // Sort clients by numero de contrato (ascending order)
+      // Clients without contract number will be placed at the end
+      clientesData.sort((a, b) => {
+        const contratoA = a.numeroContrato;
+        const contratoB = b.numeroContrato;
+
+        // If both are null/empty, keep original order
+        if (!contratoA && !contratoB) return 0;
+
+        // Push null/empty values to the end
+        if (!contratoA) return 1;
+        if (!contratoB) return -1;
+
+        // Try to parse as numbers for numeric comparison
+        const numA = parseInt(contratoA);
+        const numB = parseInt(contratoB);
+
+        // If both are valid numbers, compare numerically
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numA - numB;
+        }
+
+        // Otherwise, compare as strings (lexicographically)
+        return contratoA.localeCompare(contratoB, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      });
+
       // Get generation data for selected months
       const usinaGeracoes = allGeracoes.filter(
         g => g.usinaId === usinaId && selectedMonths.includes(g.mesReferencia)
