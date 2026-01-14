@@ -130,6 +130,7 @@ export default function FaturasUploadPage() {
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
   const [pendingConfirmData, setPendingConfirmData] = useState<any>(null);
+  const [manuallyEditedFields, setManuallyEditedFields] = useState<Set<string>>(new Set());
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -186,7 +187,10 @@ export default function FaturasUploadPage() {
       } else {
         setSelectedClienteId("");
       }
-      
+
+      // Reset manual edits tracking for new invoice
+      setManuallyEditedFields(new Set());
+
       setShowVerificationModal(true);
     },
     onError: (error: Error) => {
@@ -258,6 +262,7 @@ export default function FaturasUploadPage() {
       setFiles([]);
       setSelectedClienteId("");
       setPendingConfirmData(null);
+      setManuallyEditedFields(new Set());
     },
     onError: (error: any) => {
       if (error.conflict) {
@@ -332,71 +337,102 @@ export default function FaturasUploadPage() {
   };
 
   const handleFieldChange = (key: string, value: string) => {
-    setFormData((prev) => {
-      const newData = { ...prev, [key]: value };
+    setFormData((prev) => ({ ...prev, [key]: value }));
 
-      // Recalculate Lucro if dependent fields change
-      if (key === "valorComDesconto" || key === "valorTotal") {
-        const valComDesconto = parseToNumber(key === "valorComDesconto" ? value : prev.valorComDesconto || "0");
-        const valTotal = parseToNumber(key === "valorTotal" ? value : prev.valorTotal || "0");
-        const lucro = valComDesconto - valTotal;
-        newData.lucro = formatNumber(lucro);
-      }
+    // Track manual edits for calculated fields
+    const calculatedFields = ['fioB', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'];
+    const baseFields = ['consumoScee', 'consumoNaoCompensado', 'valorTotal', 'precoFioB', 'precoKwhUsado',
+                        'energiaInjetada', 'precoEnergiaInjetada', 'precoEnergiaCompensada', 'precoKwhNaoCompensado'];
 
-      return newData;
-    });
+    if (calculatedFields.includes(key)) {
+      // User manually edited a calculated field - mark it as manually edited
+      setManuallyEditedFields((prev) => new Set(prev).add(key));
+    } else if (baseFields.includes(key)) {
+      // User edited a base field - allow recalculation of dependent calculated fields
+      // (don't add to manuallyEditedFields, which will trigger useEffect to recalculate)
+    }
   };
 
-  // Recalculate values when client is selected
+  // Recalculate calculated fields when base fields change
   useEffect(() => {
-    if (selectedClienteId && selectedCliente && formData.consumoScee) {
-      // Get values from form
-      const consumoScee = parseToNumber(formData.consumoScee || "0");
-      const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
-      const valorTotal = parseToNumber(formData.valorTotal || "0");
-      const precoFioB = parseToNumber(formData.precoFioB || "0");
+    if (!selectedClienteId || !selectedCliente) return;
 
-      // Calculate Fio B
+    // Get values from form
+    const consumoScee = parseToNumber(formData.consumoScee || "0");
+    const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
+    const valorTotal = parseToNumber(formData.valorTotal || "0");
+    const precoFioB = parseToNumber(formData.precoFioB || "0");
+
+    // Prepare updates object (only update fields that weren't manually edited)
+    const updates: Record<string, string> = {};
+
+    // Calculate Fio B
+    if (!manuallyEditedFields.has('fioB')) {
       const fioBValor = consumoScee * precoFioB;
+      updates.fioB = formatNumber(fioBValor);
+    }
 
-      // Calculate valorSemDesconto
+    // Calculate valorSemDesconto
+    if (!manuallyEditedFields.has('valorSemDesconto')) {
+      const fioBValor = parseToNumber(manuallyEditedFields.has('fioB') ? formData.fioB || "0" : updates.fioB || "0");
       const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+      updates.valorSemDesconto = formatNumber(valorSemDesconto);
+    }
 
-      let valorComDesconto: number;
-      let economia: number;
-      let lucro: number;
+    // Calculate valorComDesconto, economia, lucro based on client type
+    if (!selectedCliente.isPagante) {
+      // Cliente de uso próprio (não pagante)
+      if (!manuallyEditedFields.has('valorComDesconto')) {
+        updates.valorComDesconto = formatNumber(0);
+      }
+      if (!manuallyEditedFields.has('economia')) {
+        updates.economia = formatNumber(0);
+      }
+      if (!manuallyEditedFields.has('lucro')) {
+        updates.lucro = formatNumber(-valorTotal);
+      }
+    } else {
+      // Cliente pagante - cálculo normal com desconto
+      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+      const discountMultiplier = 1 - (clientDiscount / 100);
+      const fioBValor = parseToNumber(manuallyEditedFields.has('fioB') ? formData.fioB || "0" : updates.fioB || "0");
 
-      // Check if client is paying customer or own use (uso próprio)
-      if (!selectedCliente.isPagante) {
-        // Cliente de uso próprio (não pagante):
-        // - Não há receita (valor com desconto = 0)
-        // - Não há economia (economia = 0)
-        // - Lucro é negativo (custo da concessionária)
-        valorComDesconto = 0;
-        economia = 0;
-        lucro = -valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
-      } else {
-        // Cliente pagante - cálculo normal com desconto
-        const clientDiscount = parseFloat(selectedCliente.desconto || "0");
-        const discountMultiplier = 1 - (clientDiscount / 100);
-        valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
-        economia = valorSemDesconto - valorComDesconto;
-        lucro = valorComDesconto - valorTotal;
-        console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+      if (!manuallyEditedFields.has('valorComDesconto')) {
+        const valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+        updates.valorComDesconto = formatNumber(valorComDesconto);
       }
 
-      // Update form data with recalculated values
-      setFormData((prev) => ({
-        ...prev,
-        fioB: formatNumber(fioBValor),
-        valorSemDesconto: formatNumber(valorSemDesconto),
-        valorComDesconto: formatNumber(valorComDesconto),
-        economia: formatNumber(economia),
-        lucro: formatNumber(lucro),
-      }));
+      if (!manuallyEditedFields.has('economia')) {
+        const valorSemDesconto = parseToNumber(manuallyEditedFields.has('valorSemDesconto') ? formData.valorSemDesconto || "0" : updates.valorSemDesconto || "0");
+        const valorComDesconto = parseToNumber(manuallyEditedFields.has('valorComDesconto') ? formData.valorComDesconto || "0" : updates.valorComDesconto || "0");
+        const economia = valorSemDesconto - valorComDesconto;
+        updates.economia = formatNumber(economia);
+      }
+
+      if (!manuallyEditedFields.has('lucro')) {
+        const valorComDesconto = parseToNumber(manuallyEditedFields.has('valorComDesconto') ? formData.valorComDesconto || "0" : updates.valorComDesconto || "0");
+        const lucro = valorComDesconto - valorTotal;
+        updates.lucro = formatNumber(lucro);
+      }
     }
-  }, [selectedClienteId, selectedCliente, formData.consumoScee, precoKwh]);
+
+    // Only update if there are changes
+    if (Object.keys(updates).length > 0) {
+      setFormData((prev) => ({ ...prev, ...updates }));
+    }
+  }, [
+    selectedClienteId,
+    selectedCliente,
+    formData.consumoScee,
+    formData.valorTotal,
+    formData.precoFioB,
+    formData.precoKwhUsado,
+    formData.fioB, // Include manually edited fields in dependencies
+    formData.valorSemDesconto,
+    formData.valorComDesconto,
+    precoKwh,
+    manuallyEditedFields,
+  ]);
 
   const handleConfirm = () => {
     if (!selectedClienteId) {
