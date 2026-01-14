@@ -457,39 +457,58 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Update the variable to be used later
       // PRIORITIZE Frontend values if they are manually provided
       const valorSemDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorSemDesconto));
-      const valorSemDescontoFinal = (!isNaN(valorSemDescontoFrontend) && valorSemDescontoFrontend !== 0) 
-        ? valorSemDescontoFrontend 
+      const valorSemDescontoFinal = (!isNaN(valorSemDescontoFrontend) && valorSemDescontoFrontend !== 0)
+        ? valorSemDescontoFrontend
         : valorSemDescontoCalculado;
 
-       // Valor com desconto
-       // Novo cálculo: ((Consumo SCEE * Preço kWh) * descontMultiplier) + ValorTotal - Fio B
-       const discountMultiplier = 1 - (clientDiscount / 100);
+       let economia: number;
+       let lucroCalculado: number;
 
-       const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
-       const valorComDescontoCalculado = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
+       // Check if client is paying customer or own use (uso próprio)
+       if (!cliente.isPagante) {
+         // Cliente de uso próprio (não pagante):
+         // - Não há receita (valor com desconto = 0)
+         // - Não há economia (economia = 0)
+         // - Lucro é negativo (custo da concessionária)
+         console.log(`\n[USO PRÓPRIO] Cliente ${cliente.nome} não é pagante`);
+         console.log(`  Valor Com Desconto: R$ 0,00 (sem receita)`);
+         console.log(`  Economia: R$ 0,00`);
+         console.log(`  Lucro: R$ -${valorTotal.toFixed(2)} (custo da concessionária)\n`);
 
-       console.log(`\nDiscount Application:`);
-       console.log(`  Client Discount: ${clientDiscount}%`);
-       console.log(`  Discount Multiplier: ${discountMultiplier}`);
-       console.log(`  Valor Com Desconto (Frontend/Extraction): R$ ${valorComDescontoFrontend.toFixed(2)}`);
-       console.log(`  Valor Com Desconto (Recalculated with CLIENT discount): R$ ${valorComDescontoCalculado.toFixed(2)}`);
+         valorComDesconto = 0;
+         economia = 0;
+         lucroCalculado = -valorTotal;
+       } else {
+         // Cliente pagante - cálculo normal com desconto
+         // Novo cálculo: ((Consumo SCEE * Preço kWh) * descontMultiplier) + ValorTotal - Fio B
+         const discountMultiplier = 1 - (clientDiscount / 100);
 
-       // FORCE use of calculated value to ensure client discount is applied correctly
-       // The frontend/extraction might have used default plant discount
-       if (!isNaN(valorComDescontoFrontend) && Math.abs(valorComDescontoFrontend - valorComDescontoCalculado) > 0.05) {
-          console.log(`  [CORRECTION] Replacing frontend value with recalculated value!`);
-          console.log(`  Difference: R$ ${Math.abs(valorComDescontoFrontend - valorComDescontoCalculado).toFixed(2)}`);
+         const valorComDescontoFrontend = parseFloat(normalizeDecimal(extractedData.valorComDesconto));
+         const valorComDescontoCalculado = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
+
+         console.log(`\nDiscount Application:`);
+         console.log(`  Client Discount: ${clientDiscount}%`);
+         console.log(`  Discount Multiplier: ${discountMultiplier}`);
+         console.log(`  Valor Com Desconto (Frontend/Extraction): R$ ${valorComDescontoFrontend.toFixed(2)}`);
+         console.log(`  Valor Com Desconto (Recalculated with CLIENT discount): R$ ${valorComDescontoCalculado.toFixed(2)}`);
+
+         // FORCE use of calculated value to ensure client discount is applied correctly
+         // The frontend/extraction might have used default plant discount
+         if (!isNaN(valorComDescontoFrontend) && Math.abs(valorComDescontoFrontend - valorComDescontoCalculado) > 0.05) {
+            console.log(`  [CORRECTION] Replacing frontend value with recalculated value!`);
+            console.log(`  Difference: R$ ${Math.abs(valorComDescontoFrontend - valorComDescontoCalculado).toFixed(2)}`);
+         }
+
+         valorComDesconto = valorComDescontoCalculado;
+         console.log(`  FINAL Valor Com Desconto: R$ ${valorComDesconto.toFixed(2)}\n`);
+
+         // Recalculate Economia and Lucro based on the FINAL used values to ensure internal consistency
+         // Economia = VSD - VCD
+         economia = valorSemDescontoFinal - valorComDesconto;
+
+         // Lucro = Valor Com Desconto - Valor Total (o que o cliente paga à empresa menos o que vai para a concessionária)
+         lucroCalculado = valorComDesconto - valorTotal;
        }
-
-       valorComDesconto = valorComDescontoCalculado;
-       console.log(`  FINAL Valor Com Desconto: R$ ${valorComDesconto.toFixed(2)}\n`);
-         
-       // Recalculate Economia and Lucro based on the FINAL used values to ensure internal consistency
-       // Economia = VSD - VCD
-       economia = valorSemDescontoFinal - valorComDesconto;
-       
-       // Lucro = Valor Com Desconto - Valor Total (o que o cliente paga à empresa menos o que vai para a concessionária)
-       const lucroCalculado = valorComDesconto - valorTotal;
        
        const normalizedData = {
          ...extractedData,

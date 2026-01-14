@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
@@ -87,6 +87,16 @@ export default function ClientesPage() {
       porcentagemEnvioCredito: "",
     },
   });
+
+  // Watch isPagante field to automatically set desconto to 0 for non-paying clients (uso próprio)
+  const isPagante = form.watch("isPagante");
+
+  useEffect(() => {
+    if (!isPagante) {
+      // Cliente não pagante (uso próprio) -> desconto = 0%
+      form.setValue("desconto", "0");
+    }
+  }, [isPagante, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: ClienteFormData) =>
@@ -415,9 +425,15 @@ export default function ClientesPage() {
                                 type="text"
                                 placeholder="Ex: 15,00"
                                 {...field}
+                                disabled={!isPagante}
                                 data-testid="input-cliente-desconto"
                               />
                             </FormControl>
+                            {!isPagante && (
+                              <p className="text-xs text-muted-foreground">
+                                Clientes de uso próprio não têm desconto
+                              </p>
+                            )}
                             <FormMessage />
                           </FormItem>
                         )}
