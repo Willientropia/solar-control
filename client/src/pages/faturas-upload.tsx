@@ -23,6 +23,12 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
@@ -34,6 +40,7 @@ import {
   Eye,
   Check,
   Calculator,
+  Info,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
@@ -85,7 +92,13 @@ interface UploadedFile {
   extractedData?: ExtractedData;
 }
 
-const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "text" | "number"; readonly?: boolean }[] = [
+const FIELD_CONFIG: {
+  key: keyof ExtractedData | "fioB";
+  label: string;
+  type: "text" | "number";
+  readonly?: boolean;
+  formula?: string;
+}[] = [
   { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" },
   { key: "nomeCliente", label: "Nome do Cliente", type: "text" },
   { key: "endereco", label: "Endereço", type: "text" },
@@ -98,12 +111,15 @@ const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "t
   { key: "consumoKwh", label: "Consumo Total (kWh)", type: "text" },
   { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" },
   { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" },
-  { key: "energiaInjetada", label: "Energia Injetada (kWh)", type: "text" },
-  { key: "precoEnergiaInjetada", label: "Preço Energia Injetada (R$)", type: "text" },
-  { key: "precoEnergiaCompensada", label: "Preço Energia Compensada (R$)", type: "text" },
   { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado (R$)", type: "text" },
   { key: "precoFioB", label: "Preço Fio B (R$)", type: "text" },
-  { key: "fioB", label: "Fio B (R$)", type: "text", readonly: true },
+  {
+    key: "fioB",
+    label: "Fio B (R$)",
+    type: "text",
+    readonly: true,
+    formula: "Consumo SCEE × Preço Fio B"
+  },
   { key: "precoAdcBandeira", label: "Preço ADC Bandeira (R$)", type: "text" },
   { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública (R$)", type: "text" },
   { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" },
@@ -111,10 +127,34 @@ const FIELD_CONFIG: { key: keyof ExtractedData | "fioB"; label: string; type: "t
   { key: "cicloGeracao", label: "Ciclo de Geração", type: "text" },
   { key: "ucGeradora", label: "UC Geradora", type: "text" },
   { key: "geracaoUltimoCiclo", label: "Geração Último Ciclo (kWh)", type: "text" },
-  { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text", readonly: true },
-  { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text", readonly: true },
-  { key: "economia", label: "Economia (R$)", type: "text", readonly: true },
-  { key: "lucro", label: "Lucro Estimado (R$)", type: "text", readonly: true },
+  {
+    key: "valorSemDesconto",
+    label: "Valor Sem Desconto (R$)",
+    type: "text",
+    readonly: true,
+    formula: "(Consumo SCEE × Preço kWh) + Valor Total - Fio B"
+  },
+  {
+    key: "valorComDesconto",
+    label: "Valor Com Desconto (R$)",
+    type: "text",
+    readonly: true,
+    formula: "((Consumo SCEE × Preço kWh) × (1 - Desconto%)) + Valor Total - Fio B"
+  },
+  {
+    key: "economia",
+    label: "Economia (R$)",
+    type: "text",
+    readonly: true,
+    formula: "Valor Sem Desconto - Valor Com Desconto"
+  },
+  {
+    key: "lucro",
+    label: "Lucro Estimado (R$)",
+    type: "text",
+    readonly: true,
+    formula: "Valor Com Desconto - Valor Total"
+  },
 ];
 
 export default function FaturasUploadPage() {
@@ -676,28 +716,42 @@ export default function FaturasUploadPage() {
                   Dados Extraídos
                 </h4>
 
-                <div className="grid gap-3">
-                  {FIELD_CONFIG.map(({ key, label, readonly }) => (
-                    <div key={key} className="space-y-1">
-                      <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
-                        {label}
-                      </Label>
-                      <Input
-                        id={`field-${key}`}
-                        value={formData[key] || ""}
-                        onChange={(e) => handleFieldChange(key, e.target.value)}
-                        placeholder={`Informe ${label.toLowerCase()}`}
-                        className={cn(
-                          "h-8 text-sm",
-                          readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground"
-                        )}
-                        readOnly={readonly}
-                        disabled={readonly}
-                        data-testid={`input-field-${key}`}
-                      />
-                    </div>
-                  ))}
-                </div>
+                <TooltipProvider>
+                  <div className="grid gap-3">
+                    {FIELD_CONFIG.map(({ key, label, readonly, formula }) => (
+                      <div key={key} className="space-y-1">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
+                            {label}
+                          </Label>
+                          {readonly && formula && (
+                            <Tooltip delayDuration={200}>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-xs">
+                                <p className="text-xs font-mono">{formula}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                        <Input
+                          id={`field-${key}`}
+                          value={formData[key] || ""}
+                          onChange={(e) => handleFieldChange(key, e.target.value)}
+                          placeholder={`Informe ${label.toLowerCase()}`}
+                          className={cn(
+                            "h-8 text-sm",
+                            readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground"
+                          )}
+                          readOnly={readonly}
+                          disabled={readonly}
+                          data-testid={`input-field-${key}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </TooltipProvider>
               </div>
             </ScrollArea>
 
