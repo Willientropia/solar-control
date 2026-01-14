@@ -322,9 +322,6 @@ export default function FaturasUploadPage() {
   // Recalculate values when client is selected
   useEffect(() => {
     if (selectedClienteId && selectedCliente && formData.consumoScee) {
-      // Get client discount
-      const clientDiscount = parseFloat(selectedCliente.desconto || "0");
-
       // Get values from form
       const consumoScee = parseToNumber(formData.consumoScee || "0");
       const precoKwhUsado = parseToNumber(formData.precoKwhUsado || precoKwh);
@@ -334,12 +331,32 @@ export default function FaturasUploadPage() {
       // Calculate Fio B
       const fioBValor = consumoScee * precoFioB;
 
-      // Calculate values using CLIENT discount (not plant default!)
-      const discountMultiplier = 1 - (clientDiscount / 100);
+      // Calculate valorSemDesconto
       const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
-      const valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
-      const economia = valorSemDesconto - valorComDesconto;
-      const lucro = valorComDesconto - valorTotal;
+
+      let valorComDesconto: number;
+      let economia: number;
+      let lucro: number;
+
+      // Check if client is paying customer or own use (uso próprio)
+      if (!selectedCliente.isPagante) {
+        // Cliente de uso próprio (não pagante):
+        // - Não há receita (valor com desconto = 0)
+        // - Não há economia (economia = 0)
+        // - Lucro é negativo (custo da concessionária)
+        valorComDesconto = 0;
+        economia = 0;
+        lucro = -valorTotal;
+        console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+      } else {
+        // Cliente pagante - cálculo normal com desconto
+        const clientDiscount = parseFloat(selectedCliente.desconto || "0");
+        const discountMultiplier = 1 - (clientDiscount / 100);
+        valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
+        economia = valorSemDesconto - valorComDesconto;
+        lucro = valorComDesconto - valorTotal;
+        console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+      }
 
       // Update form data with recalculated values
       setFormData((prev) => ({
@@ -350,8 +367,6 @@ export default function FaturasUploadPage() {
         economia: formatNumber(economia),
         lucro: formatNumber(lucro),
       }));
-
-      console.log(`Recalculated for client ${selectedCliente.nome} with ${clientDiscount}% discount`);
     }
   }, [selectedClienteId, selectedCliente, formData.consumoScee, precoKwh]);
 
