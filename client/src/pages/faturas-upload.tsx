@@ -127,6 +127,9 @@ export default function FaturasUploadPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [pdfUrl, setPdfUrl] = useState<string>("");
   const [selectedClienteId, setSelectedClienteId] = useState<string>("");
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
+  const [pendingConfirmData, setPendingConfirmData] = useState<any>(null);
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -199,9 +202,9 @@ export default function FaturasUploadPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async (data: { extractedData: Record<string, string>; clienteId: string; fileUrl: string }) => {
+    mutationFn: async (data: { extractedData: Record<string, string>; clienteId: string; fileUrl: string; forceReplace?: boolean }) => {
       const normalizedData: Record<string, string> = {};
-      
+
       const numericFields = [
         "consumoKwh", "consumoScee", "consumoNaoCompensado", "energiaInjetada",
         "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhNaoCompensado",
@@ -223,7 +226,18 @@ export default function FaturasUploadPage() {
       const response = await apiRequest("POST", "/api/faturas/confirm", {
         extractedData: { ...normalizedData, fileUrl: data.fileUrl },
         clienteId: data.clienteId,
+        forceReplace: data.forceReplace || false,
       });
+
+      // Check if response is conflict (409)
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 409 && errorData.conflict) {
+          throw { conflict: true, data: errorData };
+        }
+        throw new Error(errorData.message || "Erro ao salvar fatura");
+      }
+
       return response.json();
     },
     onSuccess: () => {
@@ -236,13 +250,21 @@ export default function FaturasUploadPage() {
       setFormData({});
       setPdfUrl("");
       setFiles([]);
+      setSelectedClienteId("");
+      setPendingConfirmData(null);
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: any) => {
+      if (error.conflict) {
+        // Show duplicate confirmation dialog
+        setDuplicateInfo(error.data.existingFatura);
+        setShowDuplicateDialog(true);
+      } else {
+        toast({
+          title: "Erro ao salvar",
+          description: error.message || "Ocorreu um erro ao salvar a fatura.",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -380,11 +402,33 @@ export default function FaturasUploadPage() {
       return;
     }
 
-    confirmMutation.mutate({
+    const confirmData = {
       extractedData: formData,
       clienteId: selectedClienteId,
       fileUrl: pdfUrl,
-    });
+    };
+
+    // Store for possible duplicate confirmation
+    setPendingConfirmData(confirmData);
+
+    confirmMutation.mutate(confirmData);
+  };
+
+  const handleConfirmReplace = () => {
+    if (pendingConfirmData) {
+      confirmMutation.mutate({
+        ...pendingConfirmData,
+        forceReplace: true,
+      });
+      setShowDuplicateDialog(false);
+      setDuplicateInfo(null);
+    }
+  };
+
+  const handleCancelReplace = () => {
+    setShowDuplicateDialog(false);
+    setDuplicateInfo(null);
+    setPendingConfirmData(null);
   };
 
   return (
@@ -664,6 +708,62 @@ export default function FaturasUploadPage() {
                   <Check className="h-4 w-4 mr-2" />
                   Confirmar e Salvar
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Fatura Confirmation Dialog */}
+      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fatura Duplicada Encontrada</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Já existe uma fatura salva para este cliente no mês de referência{" "}
+              <strong className="text-foreground">{duplicateInfo?.mesReferencia}</strong>.
+            </p>
+            {duplicateInfo && (
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <h4 className="font-medium text-sm">Dados da Fatura Existente:</h4>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="text-muted-foreground">Mês:</div>
+                  <div className="font-mono">{duplicateInfo.mesReferencia}</div>
+                  <div className="text-muted-foreground">Valor Total:</div>
+                  <div className="font-mono">R$ {duplicateInfo.valorTotal}</div>
+                  <div className="text-muted-foreground">Valor c/ Desconto:</div>
+                  <div className="font-mono">R$ {duplicateInfo.valorComDesconto}</div>
+                  <div className="text-muted-foreground">Data Vencimento:</div>
+                  <div className="font-mono">{duplicateInfo.dataVencimento}</div>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-yellow-600 dark:text-yellow-500 font-medium">
+              ⚠️ Se confirmar, os dados anteriores serão substituídos pelos novos dados e a fatura antiga será removida permanentemente.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCancelReplace}
+              disabled={confirmMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmReplace}
+              disabled={confirmMutation.isPending}
+            >
+              {confirmMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Substituindo...
+                </>
+              ) : (
+                <>Confirmar Substituição</>
               )}
             </Button>
           </DialogFooter>

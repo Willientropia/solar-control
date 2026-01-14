@@ -403,7 +403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Confirm and save extracted fatura
   app.post("/api/faturas/confirm", isAuthenticated, async (req: any, res) => {
     try {
-      const { extractedData, clienteId, usinaId } = req.body;
+      const { extractedData, clienteId, usinaId, forceReplace } = req.body;
 
       if (!extractedData || !clienteId) {
         return res.status(400).json({ message: "extractedData and clienteId are required" });
@@ -533,11 +533,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dataVencimento: extractedData.dataVencimento || "",
       };
 
-      // Create or Update the fatura with extracted data
-      let fatura;
-      
       // Check if invoice already exists for this client and month
       const existingFatura = await storage.getFaturaByClienteAndMonth(clienteId, normalizedData.mesReferencia || "");
+
+      // If duplicate exists and user hasn't confirmed replacement, return conflict
+      if (existingFatura && !forceReplace) {
+        return res.status(409).json({
+          message: "Fatura duplicada encontrada",
+          conflict: true,
+          existingFatura: {
+            id: existingFatura.id,
+            mesReferencia: existingFatura.mesReferencia,
+            valorTotal: existingFatura.valorTotal,
+            valorComDesconto: existingFatura.valorComDesconto,
+            dataVencimento: existingFatura.dataVencimento,
+            createdAt: existingFatura.createdAt,
+          }
+        });
+      }
+
+      // Create or Update the fatura with extracted data
+      let fatura;
 
       const faturaData = {
         clienteId,
