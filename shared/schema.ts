@@ -12,6 +12,7 @@ export const usinas = pgTable("usinas", {
   nome: text("nome").notNull(),
   unidadeConsumidora: text("unidade_consumidora").notNull().unique(),
   producaoMensalPrevista: decimal("producao_mensal_prevista", { precision: 12, scale: 2 }).notNull(),
+  potenciaKwp: decimal("potencia_kwp", { precision: 10, scale: 3 }),
   descontoPadrao: decimal("desconto_padrao", { precision: 5, scale: 2 }).notNull().default("15.00"),
   endereco: text("endereco"),
   createdAt: timestamp("created_at").defaultNow(),
