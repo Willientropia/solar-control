@@ -830,7 +830,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!fatura) {
         return res.status(404).json({ message: "Fatura not found" });
       }
-      
+
+      // Log dos dados salvos (para debug)
+      console.log(`[Fatura Edit] Fatura ID: ${faturaId} atualizada com sucesso`);
+      console.log(`[Fatura Edit] Campos atualizados:`, Object.keys(updateData));
+      console.log(`[Fatura Edit] Valores salvos:`, {
+        consumoScee: fatura.consumoScee,
+        precoKwh: fatura.precoKwh,
+        valorTotal: fatura.valorTotal,
+        valorSemDesconto: fatura.valorSemDesconto,
+        valorComDesconto: fatura.valorComDesconto,
+        economia: fatura.economia
+      });
+
+      // Se valores financeiros foram editados, invalidar PDF gerado para forçar nova geração
+      const financialFields = ['consumoScee', 'precoKwh', 'valorTotal', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro', 'precoFioB', 'precoAdcBandeira', 'contribuicaoIluminacao'];
+      const hasFinancialChanges = Object.keys(updateData).some(key => financialFields.includes(key));
+
+      if (hasFinancialChanges && fatura.faturaGeradaUrl) {
+        console.log(`[Fatura Edit] Valores financeiros foram alterados. Invalidando PDF gerado.`);
+        await storage.updateFatura(faturaId, {
+          faturaGeradaUrl: null,
+          faturaClienteGeradaAt: null
+        });
+        // Buscar fatura atualizada para retornar
+        const faturaAtualizada = await storage.getFatura(faturaId);
+        if (faturaAtualizada) {
+          await logAction(req.user.claims.sub, "editar", "fatura", faturaAtualizada.id, { fields: Object.keys(updateData) });
+          return res.json(faturaAtualizada);
+        }
+      }
+
       await logAction(req.user.claims.sub, "editar", "fatura", fatura.id, { fields: Object.keys(updateData) });
       res.json(fatura);
     } catch (error) {
@@ -918,7 +948,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         contribuicaoIluminacao: fatura.contribuicaoIluminacao,
         precoKwh: fatura.precoKwh,
       };
-      
+
+      // Log dos dados usados para gerar o PDF (para debug)
+      console.log(`[PDF Generation] Fatura ID: ${faturaId}`);
+      console.log(`[PDF Generation] Cliente: ${cliente.nome} (UC: ${cliente.unidadeConsumidora})`);
+      console.log(`[PDF Generation] Valores usados:`, {
+        consumoScee: pdfData.consumoScee,
+        precoKwh: pdfData.precoKwh,
+        valorTotal: pdfData.valorTotal,
+        valorSemDesconto: pdfData.valorSemDesconto,
+        valorComDesconto: pdfData.valorComDesconto,
+        economia: pdfData.economia
+      });
+
       const pythonProcess = spawn("python3", [
         path.join(process.cwd(), "server", "scripts", "generate_pdf.py"),
         JSON.stringify(pdfData),
