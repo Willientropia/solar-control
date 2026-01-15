@@ -3,6 +3,14 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,7 +99,27 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
 
   const vencimentoStatus = getVencimentoStatus();
 
+  // Get status for dropdowns
+  const getClienteStatus = () => {
+    if (!fatura.faturaClienteGeradaAt) return "nao_gerada";
+    if (!fatura.faturaClienteEnviadaAt) return "gerada";
+    if (!fatura.faturaClienteRecebidaAt) return "enviada";
+    return "recebida";
+  };
+
   // Mutations
+  const updateStatusMutation = useMutation({
+    mutationFn: (status: string) => apiRequest("PATCH", `/api/faturas/${fatura.id}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      toast({ title: "Status atualizado" });
+      onRefresh?.();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao atualizar status", description: error.message, variant: "destructive" });
+    },
+  });
+
   const marcarEnviadaMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/marcar-enviada`),
     onSuccess: () => {
@@ -181,213 +209,235 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
     }
   };
 
+  const handleClienteStatusChange = (newStatus: string) => {
+    // Handle status changes for cliente fatura
+    switch (newStatus) {
+      case "nao_gerada":
+        // Clear all timestamps
+        if (fatura.faturaClienteGeradaAt) desmarcarEnviadaMutation.mutate();
+        if (fatura.faturaClienteEnviadaAt) desmarcarEnviadaMutation.mutate();
+        if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
+        break;
+      case "gerada":
+        if (!fatura.faturaClienteGeradaAt) {
+          toast({ title: "Gere a fatura primeiro" });
+        }
+        if (fatura.faturaClienteEnviadaAt) desmarcarEnviadaMutation.mutate();
+        if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
+        break;
+      case "enviada":
+        if (!fatura.faturaClienteGeradaAt) {
+          toast({ title: "Gere a fatura primeiro" });
+        } else if (!fatura.faturaClienteEnviadaAt) {
+          marcarEnviadaMutation.mutate();
+        }
+        if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
+        break;
+      case "recebida":
+        if (!fatura.faturaClienteGeradaAt) {
+          toast({ title: "Gere a fatura primeiro" });
+        } else if (!fatura.faturaClienteEnviadaAt) {
+          toast({ title: "Marque como enviada primeiro" });
+        } else if (!fatura.faturaClienteRecebidaAt) {
+          marcarRecebidaMutation.mutate();
+        }
+        break;
+    }
+  };
+
   return (
     <Card className="hover:border-primary/50 transition-colors">
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          {/* Left side - Cliente info and indicators */}
-          <div className="flex-1 space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg">{cliente.nome}</h3>
-                  {isUsoProprio && (
-                    <Badge variant="secondary" className="text-xs">
-                      Uso Próprio
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  UC: {cliente.unidadeConsumidora}
-                  {cliente.numeroContrato && ` • Contrato: ${cliente.numeroContrato}`}
-                </p>
+        <div className="space-y-4">
+          {/* Header - Cliente info */}
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-lg">{cliente.nome}</h3>
+                {isUsoProprio && (
+                  <Badge variant="secondary" className="text-xs">
+                    Uso Próprio
+                  </Badge>
+                )}
               </div>
-
-              {/* Actions dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {/* Fatura Original */}
-                  {fatura.arquivoPdfUrl && (
-                    <DropdownMenuItem asChild>
-                      <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
-                        <Download className="h-4 w-4 mr-2" />
-                        Baixar Fatura Original
-                      </a>
-                    </DropdownMenuItem>
-                  )}
-
-                  {/* Fatura com Desconto */}
-                  {!isUsoProprio && (
-                    <>
-                      <DropdownMenuSeparator />
-
-                      {fatura.faturaGeradaUrl ? (
-                        <DropdownMenuItem asChild>
-                          <a href={fatura.faturaGeradaUrl} download target="_blank" rel="noopener noreferrer">
-                            <Download className="h-4 w-4 mr-2" />
-                            Baixar Fatura com Desconto
-                          </a>
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onClick={() => generatePdfMutation.mutate()} disabled={isGenerating}>
-                          <FileText className="h-4 w-4 mr-2" />
-                          {isGenerating ? "Gerando..." : "Gerar Fatura com Desconto"}
-                        </DropdownMenuItem>
-                      )}
-
-                      {/* Marcar/Desmarcar Enviada */}
-                      {fatura.faturaClienteGeradaAt && (
-                        <>
-                          {fatura.faturaClienteEnviadaAt ? (
-                            <DropdownMenuItem onClick={() => desmarcarEnviadaMutation.mutate()}>
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Desmarcar como Enviada
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => marcarEnviadaMutation.mutate()}>
-                              <Send className="h-4 w-4 mr-2" />
-                              Marcar como Enviada
-                            </DropdownMenuItem>
-                          )}
-                        </>
-                      )}
-
-                      {/* Marcar/Desmarcar Recebida */}
-                      {fatura.faturaClienteEnviadaAt && (
-                        <>
-                          {fatura.faturaClienteRecebidaAt ? (
-                            <DropdownMenuItem onClick={() => desmarcarRecebidaMutation.mutate()}>
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Desmarcar como Recebida
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => marcarRecebidaMutation.mutate()}>
-                              <CheckCheck className="h-4 w-4 mr-2" />
-                              Marcar como Recebida
-                            </DropdownMenuItem>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  <DropdownMenuSeparator />
-
-                  {fatura.status === "aguardando_upload" && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/faturas/upload">
-                        <FileText className="h-4 w-4 mr-2" />
-                        Fazer Upload
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-
-                  <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Excluir
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <p className="text-sm text-muted-foreground">
+                UC: {cliente.unidadeConsumidora}
+                {cliente.numeroContrato && ` • Contrato: ${cliente.numeroContrato}`}
+              </p>
             </div>
 
-            {/* Flow indicators */}
-            <FaturaFlowIndicators fatura={fatura} cliente={cliente} compact />
+            {/* Delete button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir Fatura
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-            {/* Due date and quick actions */}
-            <div className="flex items-center gap-2 pt-2">
-              {/* Due date badge */}
-              {vencimentoStatus && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "flex items-center gap-1 text-xs",
-                    vencimentoStatus.status === "paid" && "border-green-500 text-green-600 dark:text-green-400",
-                    vencimentoStatus.status === "overdue" && "border-destructive text-destructive bg-destructive/10",
-                    vencimentoStatus.status === "today" && "border-orange-500 text-orange-600 dark:text-orange-400 animate-pulse",
-                    vencimentoStatus.status === "urgent" && "border-red-500 text-red-600 dark:text-red-400",
-                    vencimentoStatus.status === "soon" && "border-orange-500 text-orange-600 dark:text-orange-400",
-                    vencimentoStatus.status === "normal" && "border-muted-foreground/30"
-                  )}
-                >
-                  <Calendar className="h-3 w-3" />
-                  {fatura.dataVencimento} • {vencimentoStatus.text}
-                </Badge>
+          {/* Flow indicators */}
+          <FaturaFlowIndicators fatura={fatura} cliente={cliente} compact />
+
+          {/* Due date */}
+          {vencimentoStatus && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "flex items-center gap-1 text-xs w-fit",
+                vencimentoStatus.status === "paid" && "border-green-500 text-green-600 dark:text-green-400",
+                vencimentoStatus.status === "overdue" && "border-destructive text-destructive bg-destructive/10",
+                vencimentoStatus.status === "today" && "border-orange-500 text-orange-600 dark:text-orange-400 animate-pulse",
+                vencimentoStatus.status === "urgent" && "border-red-500 text-red-600 dark:text-red-400",
+                vencimentoStatus.status === "soon" && "border-orange-500 text-orange-600 dark:text-orange-400",
+                vencimentoStatus.status === "normal" && "border-muted-foreground/30"
               )}
+            >
+              <Calendar className="h-3 w-3" />
+              {fatura.dataVencimento} • {vencimentoStatus.text}
+            </Badge>
+          )}
 
-              {/* Quick action buttons */}
-              <div className="flex items-center gap-1 ml-auto">
-                {fatura.arquivoPdfUrl && (
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Download original */}
+            {fatura.arquivoPdfUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
+                  <Download className="h-4 w-4 mr-2" />
+                  Baixar Original
+                </a>
+              </Button>
+            )}
+
+            {/* Edit button */}
+            {fatura.arquivoPdfUrl && expirationInfo && expirationInfo.daysLeft > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <Link href={`/faturas/upload?edit=${fatura.id}`}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar
+                </Link>
+              </Button>
+            )}
+
+            {/* Generate or download discounted fatura */}
+            {!isUsoProprio && (
+              <>
+                {fatura.faturaGeradaUrl ? (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-7 px-2"
                     asChild
-                    title="Baixar fatura original"
                   >
-                    <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4" />
+                    <a href={fatura.faturaGeradaUrl} download target="_blank" rel="noopener noreferrer">
+                      <Download className="h-4 w-4 mr-2" />
+                      Baixar c/ Desconto
                     </a>
                   </Button>
-                )}
-
-                {fatura.arquivoPdfUrl && expirationInfo && expirationInfo.daysLeft > 0 && (
+                ) : (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-7 px-2"
-                    asChild
-                    title="Editar fatura"
+                    onClick={() => generatePdfMutation.mutate()}
+                    disabled={isGenerating}
                   >
-                    <Link href={`/faturas/upload?edit=${fatura.id}`}>
-                      <Edit className="h-4 w-4" />
-                    </Link>
+                    <FileText className="h-4 w-4 mr-2" />
+                    {isGenerating ? "Gerando..." : "Gerar c/ Desconto"}
                   </Button>
                 )}
-              </div>
+              </>
+            )}
+
+            {/* Expiration warning */}
+            {expirationInfo && expirationInfo.daysLeft <= 7 && expirationInfo.daysLeft > 0 && (
+              <Badge variant="outline" className="border-orange-500 text-orange-600 dark:text-orange-400">
+                <Clock className="h-3 w-3 mr-1" />
+                PDF expira em {expirationInfo.daysLeft}d
+              </Badge>
+            )}
+
+            {expirationInfo && expirationInfo.daysLeft <= 0 && (
+              <Badge variant="outline" className="border-destructive text-destructive">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                PDF expirado
+              </Badge>
+            )}
+          </div>
+
+          {/* Status dropdowns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t">
+            {/* Status da Concessionária */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Fatura da Concessionária</Label>
+              <Select
+                value={fatura.status}
+                onValueChange={(value) => updateStatusMutation.mutate(value)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aguardando_upload">Aguardando Upload</SelectItem>
+                  <SelectItem value="aguardando_pagamento">Aguardando Pagamento</SelectItem>
+                  <SelectItem value="pagamento_pendente_confirmacao">Pagamento Pendente</SelectItem>
+                  <SelectItem value="pago">Pago</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Values */}
-            <div className="flex items-center gap-4 pt-2 border-t">
+            {/* Status da Fatura do Cliente (apenas se não for uso próprio) */}
+            {!isUsoProprio && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Fatura do Cliente</Label>
+                <Select
+                  value={getClienteStatus()}
+                  onValueChange={handleClienteStatusChange}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nao_gerada">Não Gerada</SelectItem>
+                    <SelectItem value="gerada">Gerada</SelectItem>
+                    <SelectItem value="enviada">Enviada</SelectItem>
+                    <SelectItem value="recebida">Recebida</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          {/* Values */}
+          <div className="flex items-center gap-4 pt-2 border-t">
+            <div>
+              <p className="text-xs text-muted-foreground">Valor Total</p>
+              <p className="text-sm font-mono font-semibold">
+                {formatCurrency(fatura.valorTotal || "0")}
+              </p>
+            </div>
+
+            {!isUsoProprio && fatura.valorComDesconto && (
               <div>
-                <p className="text-xs text-muted-foreground">Valor Total</p>
-                <p className="text-sm font-mono font-semibold">
-                  {formatCurrency(fatura.valorTotal || "0")}
+                <p className="text-xs text-muted-foreground">Valor c/ Desconto</p>
+                <p className="text-sm font-mono font-semibold text-green-600 dark:text-green-400">
+                  {formatCurrency(fatura.valorComDesconto)}
                 </p>
               </div>
-
-              {!isUsoProprio && fatura.valorComDesconto && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Valor c/ Desconto</p>
-                  <p className="text-sm font-mono font-semibold text-green-600 dark:text-green-400">
-                    {formatCurrency(fatura.valorComDesconto)}
-                  </p>
-                </div>
-              )}
-
-              {/* Expiration warning */}
-              {expirationInfo && expirationInfo.daysLeft <= 7 && expirationInfo.daysLeft > 0 && (
-                <div className="ml-auto flex items-center gap-1 text-orange-600 dark:text-orange-400">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-xs font-medium">
-                    Expira em {expirationInfo.daysLeft}d
-                  </span>
-                </div>
-              )}
-
-              {expirationInfo && expirationInfo.daysLeft <= 0 && (
-                <div className="ml-auto flex items-center gap-1 text-destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-xs font-medium">
-                    PDF expirado
-                  </span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </CardContent>
