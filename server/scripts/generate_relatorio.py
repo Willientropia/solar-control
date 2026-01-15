@@ -49,19 +49,22 @@ def generate_relatorio_pdf(data, output_path):
     total_equatorial = 0
     total_lucro = 0
     total_saldo_kwh = 0
-    
+    total_porcentagem_envio = 0
+
     for cliente in data.get('clientes', []):
         consumo = float(cliente.get('consumo', 0) or 0)
         valor_com_desconto = float(cliente.get('valorComDesconto', 0) or 0)
         valor_equatorial = float(cliente.get('valorTotal', 0) or 0)
         lucro = float(cliente.get('lucro', 0) or 0)
         saldo_kwh = float(cliente.get('saldoKwh', 0) or 0)
-        
+        porcentagem_envio = float(cliente.get('porcentagemEnvioCredito', 0) or 0)
+
         total_consumo += consumo
         total_valor_com_desconto += valor_com_desconto
         total_equatorial += valor_equatorial
         total_lucro += lucro
         total_saldo_kwh += saldo_kwh
+        total_porcentagem_envio += porcentagem_envio
         
         clientes_data.append({
             'numero_contrato': cliente.get('numeroContrato', '') or '',
@@ -98,6 +101,7 @@ def generate_relatorio_pdf(data, output_path):
         'total_equatorial': format_currency(total_equatorial),
         'total_lucro': format_currency(total_lucro),
         'total_saldo_kwh': format_number(total_saldo_kwh),
+        'total_porcentagem_envio': format_number(total_porcentagem_envio),
         'data_emissao': datetime.now().strftime('%d/%m/%Y às %H:%M'),
     }
     

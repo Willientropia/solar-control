@@ -939,7 +939,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       const pdfData = {
         nomeCliente: cliente.nome,
-        enderecoCliente: cliente.endereco || "",
+        enderecoCliente: cliente.enderecoCompleto || cliente.endereco || "",
         unidadeConsumidora: cliente.unidadeConsumidora,
         mesReferencia: fatura.mesReferencia,
         dataVencimento: fatura.dataVencimento || "",
@@ -1291,7 +1291,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             nome: cliente.nome,
             uc: cliente.unidadeConsumidora,
             numeroContrato: cliente.numeroContrato,
-            endereco: cliente.endereco,
+            endereco: cliente.enderecoSimplificado || cliente.endereco || "",
             porcentagemEnvioCredito: cliente.porcentagemEnvioCredito,
             consumo: consumoTotal,
             valorComDesconto: valorComDescontoTotal,
