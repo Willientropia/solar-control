@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Economia - Sol Tech Energia</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="page">
+        <!-- Cabeçalho -->
+        <header class="header">
+            <img src="{{ logo_base64 }}" alt="Logo Sol Tech Energia Solar" class="logo">
+            <div class="header-text">
+                Sol Tech Energia Solar<br>
+                Relatório de Economia com Energia Solar
+            </div>
+        </header>
+
+        <!-- Informações do cliente -->
+        <section class="info-cliente">
+            <div class="cliente-detalhes">
+                <p class="cliente-nome">{{ nome_cliente }}</p>
+                <p>{{ endereco_completo }}</p>
+            </div>
+            <div class="cliente-unidade">
+                <div class="unidade-box">
+                    <p>Unidade Consumidora</p>
+                </div>
+                <div class="unidade-numero">
+                    <p>{{ unidade_consumidora }}</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Período do relatório -->
+        <section class="dados-principais">
+            <div class="dado" style="flex: 2;">
+                <div class="dado-header amarelo">Período</div>
+                <div class="dado-content">{{ periodo }}</div>
+            </div>
+            <div class="dado">
+                <div class="dado-header verde">Desconto</div>
+                <div class="dado-content">{{ desconto_percentual }}%</div>
+            </div>
+            <div class="dado">
+                <div class="dado-header azul">Meses</div>
+                <div class="dado-content">{{ num_meses }}</div>
+            </div>
+        </section>
+
+        <!-- Resumo de economia -->
+        <section class="resumo-economia">
+            <h2 style="color: #2c5f2d; margin-bottom: 15px; font-size: 20px;">Resumo de Economia</h2>
+            <div class="economia-cards">
+                <div class="economia-card">
+                    <div class="economia-label">Valor Sem Desconto</div>
+                    <div class="economia-valor sem-desconto">R$ {{ valor_sem_desconto_total }}</div>
+                    <div class="economia-descricao">Quanto você teria pago à concessionária</div>
+                </div>
+                <div class="economia-card">
+                    <div class="economia-label">Valor Com Desconto</div>
+                    <div class="economia-valor com-desconto">R$ {{ valor_com_desconto_total }}</div>
+                    <div class="economia-descricao">Quanto você pagou com energia solar</div>
+                </div>
+                <div class="economia-card destaque">
+                    <div class="economia-label">Economia Total</div>
+                    <div class="economia-valor economia">R$ {{ economia_total }}</div>
+                    <div class="economia-descricao">Você economizou no período</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Informações adicionais -->
+        <section class="informacoes-adicionais">
+            <p><strong>Seu investimento em energia solar está valendo a pena!</strong></p>
+            <p>Durante o período de {{ periodo }}, você economizou um total de <strong>R$ {{ economia_total }}</strong> na sua conta de energia elétrica através do sistema de energia solar.</p>
+            <p>Isso representa uma economia de {{ desconto_percentual }}% em relação ao que você pagaria diretamente à concessionária.</p>
+            <p>Continue aproveitando os benefícios da energia limpa e renovável!</p>
+        </section>
+
+        <!-- Tabela detalhada por mês -->
+        <section class="tabela-fatura">
+            <h3 style="margin-bottom: 10px; color: #2c5f2d;">Detalhamento Mensal</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mês</th>
+                        <th>Consumo SCEE</th>
+                        <th>Valor Sem Desconto</th>
+                        <th>Valor Com Desconto</th>
+                        <th>Economia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fatura in faturas %}
+                    <tr>
+                        <td><strong>{{ fatura.mes }}</strong></td>
+                        <td>{{ fatura.consumo_scee }} kWh</td>
+                        <td>R$ {{ fatura.valor_sem_desconto }}</td>
+                        <td class="valor-destaque">R$ {{ fatura.valor_com_desconto }}</td>
+                        <td class="economia-destaque">R$ {{ fatura.economia }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-row">
+                        <td colspan="2"><strong>TOTAL DO PERÍODO</strong></td>
+                        <td><strong>R$ {{ valor_sem_desconto_total }}</strong></td>
+                        <td class="valor-destaque"><strong>R$ {{ valor_com_desconto_total }}</strong></td>
+                        <td class="economia-destaque"><strong>R$ {{ economia_total }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Rodapé -->
+        <footer class="footer">
+            <p>Sol Tech Energia Solar - Gerando economia e sustentabilidade</p>
+            <p>Este relatório foi gerado automaticamente pelo sistema de gestão Sol Tech</p>
+        </footer>
+    </div>
+
+    <style>
+        .resumo-economia {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .economia-cards {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .economia-card {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .economia-card.destaque {
+            background: linear-gradient(135deg, #2c5f2d 0%, #4a7c59 100%);
+            color: white;
+            border-color: #2c5f2d;
+        }
+
+        .economia-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .economia-valor {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .economia-valor.sem-desconto {
+            color: #d32f2f;
+        }
+
+        .economia-valor.com-desconto {
+            color: #1976d2;
+        }
+
+        .economia-valor.economia {
+            color: white;
+        }
+
+        .economia-descricao {
+            font-size: 11px;
+            opacity: 0.7;
+        }
+
+        .valor-destaque {
+            color: #1976d2 !important;
+            font-weight: 600;
+        }
+
+        .economia-destaque {
+            color: #2c5f2d !important;
+            font-weight: 700;
+        }
+
+        .total-row {
+            background: #f0f0f0;
+            font-weight: bold;
+            border-top: 2px solid #2c5f2d;
+        }
+
+        .dado-header.verde {
+            background-color: #2c5f2d;
+        }
+
+        .dado-header.azul {
+            background-color: #1976d2;
+        }
+    </style>
+</body>
+</html>
