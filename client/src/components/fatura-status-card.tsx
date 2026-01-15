@@ -42,9 +42,10 @@ interface FaturaStatusCardProps {
   fatura: Fatura;
   cliente: Cliente;
   onRefresh?: () => void;
+  onEdit?: (fatura: Fatura & { cliente?: Cliente }) => void;
 }
 
-export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCardProps) {
+export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaStatusCardProps) {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -328,15 +329,14 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
               <Button
                 variant="outline"
                 size="sm"
-                asChild
+                onClick={() => onEdit?.({ ...fatura, cliente })}
+                disabled={expirationInfo && expirationInfo.daysLeft <= 0}
                 className={cn(
-                  expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50 pointer-events-none"
+                  expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50"
                 )}
               >
-                <Link href={`/faturas/upload?edit=${fatura.id}`}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
-                </Link>
+                <Edit className="h-4 w-4 mr-2" />
+                Editar
               </Button>
             )}
 
