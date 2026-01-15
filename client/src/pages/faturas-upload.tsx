@@ -296,10 +296,21 @@ export default function FaturasUploadPage() {
         "precoKwhUsado"
       ];
 
+      // Campos de preço/tarifa que devem manter até 6 casas decimais
+      const priceFields = [
+        "precoFioB", "precoAdcBandeira", "precoKwhNaoCompensado",
+        "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhUsado"
+      ];
+
       Object.entries(data.extractedData).forEach(([key, value]) => {
         if (numericFields.includes(key)) {
           const num = parseToNumber(value);
-          normalizedData[key] = isNaN(num) ? "0.00" : num.toFixed(2);
+          if (isNaN(num)) {
+            normalizedData[key] = priceFields.includes(key) ? "0.000000" : "0.00";
+          } else {
+            // Aplicar precisão adequada: 6 decimais para preços, 2 para valores monetários
+            normalizedData[key] = priceFields.includes(key) ? num.toFixed(6) : num.toFixed(2);
+          }
         } else {
           normalizedData[key] = value;
         }
@@ -646,10 +657,21 @@ export default function FaturasUploadPage() {
           "precoKwhUsado"
         ];
 
+        // Campos de preço/tarifa que devem manter até 6 casas decimais
+        const priceFields = [
+          "precoFioB", "precoAdcBandeira", "precoKwhNaoCompensado",
+          "precoEnergiaInjetada", "precoEnergiaCompensada", "precoKwhUsado"
+        ];
+
         Object.entries(fatura.formData).forEach(([key, value]) => {
           if (numericFields.includes(key)) {
             const num = parseToNumber(value);
-            normalizedData[key] = isNaN(num) ? "0.00" : num.toFixed(2);
+            if (isNaN(num)) {
+              normalizedData[key] = priceFields.includes(key) ? "0.000000" : "0.00";
+            } else {
+              // Aplicar precisão adequada: 6 decimais para preços, 2 para valores monetários
+              normalizedData[key] = priceFields.includes(key) ? num.toFixed(6) : num.toFixed(2);
+            }
           } else {
             normalizedData[key] = value;
           }
@@ -861,7 +883,7 @@ export default function FaturasUploadPage() {
                 <Label>Preço do kWh (R$)</Label>
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.000001"
                   placeholder="Ex: 0.85"
                   value={precoKwh}
                   onChange={(e) => setPrecoKwh(e.target.value)}
