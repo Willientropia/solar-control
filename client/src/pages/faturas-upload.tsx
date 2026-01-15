@@ -184,6 +184,7 @@ export default function FaturasUploadPage() {
   const [showSaveAllDialog, setShowSaveAllDialog] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [saveAllProgress, setSaveAllProgress] = useState({ current: 0, total: 0 });
+  const [replaceAllDuplicates, setReplaceAllDuplicates] = useState(true);
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -660,7 +661,7 @@ export default function FaturasUploadPage() {
           body: JSON.stringify({
             extractedData: { ...normalizedData, fileUrl: fatura.pdfUrl },
             clienteId: fatura.selectedClienteId,
-            forceReplace: false,
+            forceReplace: replaceAllDuplicates,
           }),
           credentials: "include",
         });
@@ -668,8 +669,8 @@ export default function FaturasUploadPage() {
         if (!response.ok) {
           const errorData = await response.json();
 
-          // If it's a duplicate (409), stop the batch process and let user decide
-          if (response.status === 409 && errorData.conflict) {
+          // If it's a duplicate (409) and we're not auto-replacing, stop the batch process
+          if (response.status === 409 && errorData.conflict && !replaceAllDuplicates) {
             setIsSavingAll(false);
             setCurrentFaturaIndex(fatura.originalIndex);
             setDuplicateInfo(errorData.existingFatura);
@@ -1216,6 +1217,21 @@ export default function FaturasUploadPage() {
                   </div>
                 );
               })}
+            </div>
+            <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg">
+              <input
+                type="checkbox"
+                id="replace-duplicates"
+                checked={replaceAllDuplicates}
+                onChange={(e) => setReplaceAllDuplicates(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label htmlFor="replace-duplicates" className="text-sm text-orange-900 dark:text-orange-100 cursor-pointer">
+                <strong>Substituir automaticamente faturas duplicadas</strong>
+                <p className="text-xs mt-1 text-orange-700 dark:text-orange-300">
+                  Se marcado, faturas com mesmo mês de referência serão substituídas automaticamente. Caso contrário, o processo será interrompido para confirmação manual.
+                </p>
+              </label>
             </div>
             <p className="text-sm text-yellow-600 dark:text-yellow-500 font-medium">
               ⚠️ Certifique-se de que todas as faturas estão vinculadas aos clientes corretos antes de prosseguir.
