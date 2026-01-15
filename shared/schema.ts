@@ -38,7 +38,9 @@ export const clientes = pgTable("clientes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   nome: text("nome").notNull(),
   cpfCnpj: text("cpf_cnpj"),
-  endereco: text("endereco"),
+  endereco: text("endereco"), // Campo legado, mantido para compatibilidade
+  enderecoSimplificado: text("endereco_simplificado"), // Ex: "SLMB" - usado em relatórios
+  enderecoCompleto: text("endereco_completo"), // Endereço completo - usado em faturas
   unidadeConsumidora: text("unidade_consumidora").notNull().unique(),
   usinaId: varchar("usina_id").notNull().references(() => usinas.id, { onDelete: "cascade" }),
   desconto: decimal("desconto", { precision: 5, scale: 2 }).notNull().default("15.00"),
