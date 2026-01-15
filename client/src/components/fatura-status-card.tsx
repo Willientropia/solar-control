@@ -24,7 +24,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { FaturaFlowIndicators } from "./fatura-flow-indicators";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Fatura, Cliente } from "@shared/schema";
