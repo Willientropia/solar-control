@@ -157,16 +157,25 @@ function StatusIcon({ status, icon: Icon, size = "md" }: StatusIconProps) {
   const sizeClasses = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const iconSizeClasses = size === "sm" ? "h-3 w-3" : "h-4 w-4";
 
+  const getTooltipText = () => {
+    if (Icon === Upload) return status === "done" ? "Fatura enviada" : "Aguardando upload";
+    if (Icon === DollarSign) return status === "done" ? "Pago à concessionária" : "Pagamento pendente";
+    if (Icon === FileText) return status === "done" ? "Fatura gerada" : "Fatura não gerada";
+    if (Icon === Send) return status === "done" ? "Enviada ao cliente" : "Não enviada";
+    if (Icon === CheckCheck) return status === "done" ? "Recebida do cliente" : "Não recebida";
+    return status === "done" ? "Concluído" : "Pendente";
+  };
+
   return (
     <div
       className={cn(
-        "flex items-center justify-center rounded-full border-2",
+        "flex items-center justify-center rounded-full border-2 cursor-help",
         sizeClasses,
         status === "done" && "border-green-500 bg-green-50 dark:bg-green-950/30",
         status === "pending" && "border-muted-foreground/30 bg-muted/30",
         status === "error" && "border-destructive bg-destructive/10"
       )}
-      title={status === "done" ? "Concluído" : status === "pending" ? "Pendente" : "Erro"}
+      title={getTooltipText()}
     >
       <Icon
         className={cn(
