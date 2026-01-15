@@ -62,7 +62,9 @@ import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
 interface ClienteDetalhes extends Cliente {
   usina?: Usina;
   faturas?: Fatura[];
-  saldoTotal?: string;
+  saldoAtual?: string;
+  mediaConsumo?: string;
+  mesesDuracaoSaldo?: string;
 }
 
 export default function ClienteDetalhesPage() {
@@ -203,7 +205,27 @@ export default function ClienteDetalhesPage() {
   }
 
   const faturas = cliente.faturas || [];
-  const saldoTotal = parseToNumber(cliente.saldoTotal || "0");
+  const saldoAtual = parseToNumber(cliente.saldoAtual || "0");
+  const mesesDuracao = parseToNumber(cliente.mesesDuracaoSaldo || "0");
+
+  // Helper function to compare months in "Jan/2025" format
+  const compareMonths = (mesA: string, mesB: string): number => {
+    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const [mesTextA, anoA] = mesA.split('/');
+    const [mesTextB, anoB] = mesB.split('/');
+    const yearDiff = parseInt(anoA) - parseInt(anoB);
+    if (yearDiff !== 0) return yearDiff;
+    return meses.indexOf(mesTextA) - meses.indexOf(mesTextB);
+  };
+
+  // Filter faturas for month selectors based on selections
+  const faturasParaMesInicial = mesFinal
+    ? faturas.filter(f => compareMonths(f.mesReferencia, mesFinal) <= 0)
+    : faturas;
+
+  const faturasParaMesFinal = mesInicial
+    ? faturas.filter(f => compareMonths(f.mesReferencia, mesInicial) >= 0)
+    : faturas;
 
   return (
     <div className="p-6 space-y-6">
@@ -227,7 +249,7 @@ export default function ClienteDetalhesPage() {
       />
 
       {/* Métricas principais */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Status</CardTitle>
@@ -281,10 +303,25 @@ export default function ClienteDetalhesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatNumber(saldoTotal)} kWh
+              {formatNumber(saldoAtual)} kWh
             </div>
             <p className="text-xs text-muted-foreground">
-              Créditos acumulados
+              Da fatura mais recente
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Duração Saldo</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {mesesDuracao > 0 ? `${formatNumber(mesesDuracao)} meses` : "N/A"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Baseado na média de consumo
             </p>
           </CardContent>
         </Card>
@@ -390,7 +427,7 @@ export default function ClienteDetalhesPage() {
                     <SelectValue placeholder="Selecione o mês inicial" />
                   </SelectTrigger>
                   <SelectContent>
-                    {faturas.map((fatura) => (
+                    {faturasParaMesInicial.map((fatura) => (
                       <SelectItem key={`inicial-${fatura.id}`} value={fatura.mesReferencia}>
                         {fatura.mesReferencia}
                       </SelectItem>
@@ -405,7 +442,7 @@ export default function ClienteDetalhesPage() {
                     <SelectValue placeholder="Selecione o mês final" />
                   </SelectTrigger>
                   <SelectContent>
-                    {faturas.map((fatura) => (
+                    {faturasParaMesFinal.map((fatura) => (
                       <SelectItem key={`final-${fatura.id}`} value={fatura.mesReferencia}>
                         {fatura.mesReferencia}
                       </SelectItem>

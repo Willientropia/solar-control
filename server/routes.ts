@@ -290,16 +290,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return mesIndexB - mesIndexA;
         });
 
-      // Calculate total saldo (sum of all saldoKwh)
-      const saldoTotal = clienteFaturas.reduce((acc: number, fatura: any) => {
-        return acc + parseFloat(fatura.saldoKwh || "0");
+      // Get saldo from most recent fatura (first in array)
+      const saldoAtual = clienteFaturas.length > 0
+        ? parseFloat(clienteFaturas[0].saldoKwh || "0")
+        : 0;
+
+      // Calculate average consumo SCEE from last faturas (max 6 months)
+      const faturasParaMedia = clienteFaturas.slice(0, 6);
+      const consumoTotal = faturasParaMedia.reduce((acc: number, fatura: any) => {
+        return acc + parseFloat(fatura.consumoScee || "0");
       }, 0);
+      const mediaConsumo = faturasParaMedia.length > 0
+        ? consumoTotal / faturasParaMedia.length
+        : 0;
+
+      // Calculate how many months the current saldo will last
+      const mesesDuracaoSaldo = mediaConsumo > 0
+        ? saldoAtual / mediaConsumo
+        : 0;
 
       res.json({
         ...cliente,
         usina,
         faturas: clienteFaturas,
-        saldoTotal: saldoTotal.toFixed(2),
+        saldoAtual: saldoAtual.toFixed(2),
+        mediaConsumo: mediaConsumo.toFixed(2),
+        mesesDuracaoSaldo: mesesDuracaoSaldo.toFixed(1),
       });
     } catch (error) {
       console.error("Error fetching cliente detalhes:", error);
