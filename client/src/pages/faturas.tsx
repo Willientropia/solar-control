@@ -134,7 +134,7 @@ export default function FaturasNewPage() {
   const handleEditFatura = (fatura: FaturaWithCliente) => {
     setEditingFatura(fatura);
 
-    // Calculate Fio B from existing values
+    // Calculate Fio B from existing values (use toFixed for number input)
     const consumoScee = parseToNumber(fatura.consumoScee || "0");
     const precoFioB = parseToNumber(fatura.precoFioB || "0");
     const fioBCalculado = consumoScee * precoFioB;
@@ -155,7 +155,7 @@ export default function FaturasNewPage() {
       consumoNaoCompensado: fatura.consumoNaoCompensado || "",
       precoKwhNaoCompensado: fatura.dadosExtraidos?.precoKwhNaoCompensado || "",
       precoFioB: fatura.precoFioB || "",
-      fioB: formatNumber(fioBCalculado),
+      fioB: fioBCalculado.toFixed(2),
       precoAdcBandeira: fatura.precoAdcBandeira || "",
       contribuicaoIluminacao: fatura.contribuicaoIluminacao || "",
       valorTotal: fatura.valorTotal || "",
@@ -246,14 +246,14 @@ export default function FaturasNewPage() {
     console.log("Lucro:", lucro);
     console.log("================");
 
-    // Update form with recalculated values
+    // Update form with recalculated values (use toFixed for number inputs)
     setEditFormData(prev => ({
       ...prev,
-      fioB: formatNumber(fioBValor),
-      valorSemDesconto: formatNumber(valorSemDesconto),
-      valorComDesconto: formatNumber(valorComDesconto),
-      economia: formatNumber(economia),
-      lucro: formatNumber(lucro),
+      fioB: fioBValor.toFixed(2),
+      valorSemDesconto: valorSemDesconto.toFixed(2),
+      valorComDesconto: valorComDesconto.toFixed(2),
+      economia: economia.toFixed(2),
+      lucro: lucro.toFixed(2),
     }));
 
     toast({
@@ -502,21 +502,10 @@ export default function FaturasNewPage() {
       <Dialog open={!!editingFatura} onOpenChange={(open) => !open && setEditingFatura(null)}>
         <DialogContent className="max-w-7xl h-[95vh] flex flex-col p-0">
           <DialogHeader className="p-6 pb-4 border-b">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle>Editar Fatura</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Cliente: {editingFatura?.cliente?.nome || "N/A"} • UC: {editingFatura?.cliente?.unidadeConsumidora || "N/A"}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setEditingFatura(null)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <DialogTitle>Editar Fatura</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Cliente: {editingFatura?.cliente?.nome || "N/A"} • UC: {editingFatura?.cliente?.unidadeConsumidora || "N/A"}
+            </p>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-4 p-6 flex-1 overflow-hidden">
@@ -656,32 +645,29 @@ export default function FaturasNewPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Fio B (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.fioB || ""}
-                      disabled
-                      className="bg-muted"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Calculado: Consumo SCEE × Preço Fio B
-                    </p>
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={handleRecalculate}
-                      className="w-full"
-                    >
-                      <Calculator className="h-4 w-4 mr-2" />
-                      Recalcular Valores
-                    </Button>
-                  </div>
+                <div>
+                  <Label>Fio B (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editFormData.fioB || ""}
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Calculado: Consumo SCEE × Preço Fio B
+                  </p>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleRecalculate}
+                  className="w-full"
+                >
+                  <Calculator className="h-4 w-4 mr-2" />
+                  Recalcular Valores
+                </Button>
 
                 <div>
                   <Label>Contribuição Iluminação (R$)</Label>
