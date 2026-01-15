@@ -5,6 +5,9 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -12,6 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { UsinaSection } from "@/components/usina-section";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -22,10 +32,12 @@ import {
   Clock,
   AlertCircle,
   FileText,
+  Save,
+  X,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, parseToNumber, formatNumber } from "@/lib/utils";
 
 interface FaturaWithCliente extends Fatura {
   cliente?: Cliente;
@@ -67,6 +79,8 @@ export default function FaturasNewPage() {
 
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthRef());
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
+  const [editingFatura, setEditingFatura] = useState<FaturaWithCliente | null>(null);
+  const [editFormData, setEditFormData] = useState<Record<string, string>>({});
 
   const { data: usinas = [] } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -98,6 +112,83 @@ export default function FaturasNewPage() {
       toast({ title: "Erro ao gerar faturas", description: error.message, variant: "destructive" });
     }
   });
+
+  const editFaturaMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: Record<string, any> }) => {
+      const response = await apiRequest("PATCH", `/api/faturas/${data.id}`, data.updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      toast({ title: "Fatura atualizada!", description: "As alterações foram salvas com sucesso." });
+      setEditingFatura(null);
+      setEditFormData({});
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const handleEditFatura = (fatura: FaturaWithCliente) => {
+    setEditingFatura(fatura);
+    // Populate form with current values
+    setEditFormData({
+      cpfCnpj: fatura.dadosExtraidos?.cpfCnpj || "",
+      nomeCliente: fatura.dadosExtraidos?.nomeCliente || "",
+      endereco: fatura.dadosExtraidos?.endereco || "",
+      unidadeConsumidora: fatura.dadosExtraidos?.unidadeConsumidora || "",
+      mesReferencia: fatura.mesReferencia || "",
+      dataVencimento: fatura.dataVencimento || "",
+      leituraAnterior: fatura.dadosExtraidos?.leituraAnterior || "",
+      leituraAtual: fatura.dadosExtraidos?.leituraAtual || "",
+      quantidadeDias: fatura.dadosExtraidos?.quantidadeDias || "",
+      consumoKwh: fatura.dadosExtraidos?.consumoKwh || "",
+      consumoScee: fatura.consumoScee || "",
+      consumoNaoCompensado: fatura.consumoNaoCompensado || "",
+      precoKwhNaoCompensado: fatura.dadosExtraidos?.precoKwhNaoCompensado || "",
+      precoFioB: fatura.precoFioB || "",
+      precoAdcBandeira: fatura.precoAdcBandeira || "",
+      contribuicaoIluminacao: fatura.contribuicaoIluminacao || "",
+      valorTotal: fatura.valorTotal || "",
+      saldoKwh: fatura.saldoKwh || "",
+      cicloGeracao: fatura.dadosExtraidos?.cicloGeracao || "",
+      ucGeradora: fatura.dadosExtraidos?.ucGeradora || "",
+      geracaoUltimoCiclo: fatura.dadosExtraidos?.geracaoUltimoCiclo || "",
+      valorSemDesconto: fatura.valorSemDesconto || "",
+      valorComDesconto: fatura.valorComDesconto || "",
+      economia: fatura.economia || "",
+      lucro: fatura.lucro || "",
+      precoKwh: fatura.precoKwh || "",
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingFatura) return;
+
+    const updates = {
+      mesReferencia: editFormData.mesReferencia,
+      dataVencimento: editFormData.dataVencimento,
+      consumoScee: editFormData.consumoScee,
+      consumoNaoCompensado: editFormData.consumoNaoCompensado,
+      precoKwh: editFormData.precoKwh,
+      precoFioB: editFormData.precoFioB,
+      precoAdcBandeira: editFormData.precoAdcBandeira,
+      contribuicaoIluminacao: editFormData.contribuicaoIluminacao,
+      valorTotal: editFormData.valorTotal,
+      valorSemDesconto: editFormData.valorSemDesconto,
+      valorComDesconto: editFormData.valorComDesconto,
+      economia: editFormData.economia,
+      lucro: editFormData.lucro,
+      saldoKwh: editFormData.saldoKwh,
+    };
+
+    editFaturaMutation.mutate({ id: editingFatura.id, updates });
+  };
+
+  const updateEditFormField = (field: string, value: string) => {
+    setEditFormData(prev => ({ ...prev, [field]: value }));
+  };
 
   // Filter usinas based on selection
   const filteredUsinas = selectedUsinaId === "all"
@@ -302,6 +393,7 @@ export default function FaturasNewPage() {
                 faturas={usinaFaturas}
                 clientes={usinaClientes}
                 onRefresh={refetch}
+                onEditFatura={handleEditFatura}
               />
             );
           })
@@ -333,6 +425,279 @@ export default function FaturasNewPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Edit Modal */}
+      <Dialog open={!!editingFatura} onOpenChange={(open) => !open && setEditingFatura(null)}>
+        <DialogContent className="max-w-7xl max-h-[90vh] p-0">
+          <DialogHeader className="p-6 pb-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Editar Fatura</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Cliente: {editingFatura?.cliente?.nome || "N/A"} • UC: {editingFatura?.cliente?.unidadeConsumidora || "N/A"}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditingFatura(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-4 p-6 overflow-hidden">
+            {/* Left side - Form */}
+            <ScrollArea className="h-[calc(90vh-180px)] pr-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>CPF/CNPJ</Label>
+                    <Input
+                      value={editFormData.cpfCnpj || ""}
+                      onChange={(e) => updateEditFormField("cpfCnpj", e.target.value)}
+                      disabled
+                    />
+                  </div>
+                  <div>
+                    <Label>Unidade Consumidora</Label>
+                    <Input
+                      value={editFormData.unidadeConsumidora || ""}
+                      onChange={(e) => updateEditFormField("unidadeConsumidora", e.target.value)}
+                      disabled
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Nome do Cliente</Label>
+                  <Input
+                    value={editFormData.nomeCliente || ""}
+                    onChange={(e) => updateEditFormField("nomeCliente", e.target.value)}
+                    disabled
+                  />
+                </div>
+
+                <div>
+                  <Label>Endereço</Label>
+                  <Input
+                    value={editFormData.endereco || ""}
+                    onChange={(e) => updateEditFormField("endereco", e.target.value)}
+                    disabled
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Mês de Referência</Label>
+                    <Input
+                      value={editFormData.mesReferencia || ""}
+                      onChange={(e) => updateEditFormField("mesReferencia", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Data de Vencimento</Label>
+                    <Input
+                      value={editFormData.dataVencimento || ""}
+                      onChange={(e) => updateEditFormField("dataVencimento", e.target.value)}
+                      placeholder="DD/MM/AAAA"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Leitura Anterior</Label>
+                    <Input
+                      value={editFormData.leituraAnterior || ""}
+                      onChange={(e) => updateEditFormField("leituraAnterior", e.target.value)}
+                      disabled
+                    />
+                  </div>
+                  <div>
+                    <Label>Leitura Atual</Label>
+                    <Input
+                      value={editFormData.leituraAtual || ""}
+                      onChange={(e) => updateEditFormField("leituraAtual", e.target.value)}
+                      disabled
+                    />
+                  </div>
+                  <div>
+                    <Label>Quantidade de Dias</Label>
+                    <Input
+                      value={editFormData.quantidadeDias || ""}
+                      onChange={(e) => updateEditFormField("quantidadeDias", e.target.value)}
+                      disabled
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Consumo SCEE (kWh)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.consumoScee || ""}
+                      onChange={(e) => updateEditFormField("consumoScee", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Consumo Não Compensado (kWh)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.consumoNaoCompensado || ""}
+                      onChange={(e) => updateEditFormField("consumoNaoCompensado", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Preço kWh (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={editFormData.precoKwh || ""}
+                      onChange={(e) => updateEditFormField("precoKwh", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Preço Fio B (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={editFormData.precoFioB || ""}
+                      onChange={(e) => updateEditFormField("precoFioB", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Preço ADC Bandeira (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={editFormData.precoAdcBandeira || ""}
+                      onChange={(e) => updateEditFormField("precoAdcBandeira", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Contribuição Iluminação (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editFormData.contribuicaoIluminacao || ""}
+                    onChange={(e) => updateEditFormField("contribuicaoIluminacao", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Valor Total (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.valorTotal || ""}
+                      onChange={(e) => updateEditFormField("valorTotal", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Saldo (kWh)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.saldoKwh || ""}
+                      onChange={(e) => updateEditFormField("saldoKwh", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Valor Sem Desconto (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.valorSemDesconto || ""}
+                      onChange={(e) => updateEditFormField("valorSemDesconto", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Valor Com Desconto (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.valorComDesconto || ""}
+                      onChange={(e) => updateEditFormField("valorComDesconto", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Economia (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.economia || ""}
+                      onChange={(e) => updateEditFormField("economia", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Lucro (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.lucro || ""}
+                      onChange={(e) => updateEditFormField("lucro", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+
+            {/* Right side - PDF Preview */}
+            <div className="border rounded-lg overflow-hidden bg-muted/30">
+              {editingFatura?.arquivoPdfUrl ? (
+                <iframe
+                  src={editingFatura.arquivoPdfUrl}
+                  className="w-full h-[calc(90vh-180px)]"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-[calc(90vh-180px)]">
+                  <div className="text-center">
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">Nenhum PDF disponível</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="p-6 pt-0">
+            <Button variant="outline" onClick={() => setEditingFatura(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={editFaturaMutation.isPending}>
+              {editFaturaMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar Alterações
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

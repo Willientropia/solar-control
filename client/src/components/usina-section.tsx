@@ -12,9 +12,10 @@ interface UsinaSectionProps {
   faturas: Array<Fatura & { cliente?: Cliente }>;
   clientes: Cliente[];
   onRefresh?: () => void;
+  onEditFatura?: (fatura: Fatura & { cliente?: Cliente }) => void;
 }
 
-export function UsinaSection({ usina, faturas, clientes, onRefresh }: UsinaSectionProps) {
+export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura }: UsinaSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Get unique clients for this usina with their faturas
@@ -134,6 +135,7 @@ export function UsinaSection({ usina, faturas, clientes, onRefresh }: UsinaSecti
                       fatura={fatura}
                       cliente={cliente}
                       onRefresh={onRefresh}
+                      onEdit={onEditFatura}
                     />
                   ))
                 ) : (
