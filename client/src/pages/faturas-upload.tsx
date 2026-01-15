@@ -249,22 +249,26 @@ export default function FaturasUploadPage() {
       );
 
       // Add to pending faturas
-      setPendingFaturas((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          fileName: file.name,
-          formData: initialFormData,
-          pdfUrl: data.fileUrl || "",
-          selectedClienteId: matchedCliente?.id || "",
-          saved: false,
-        },
-      ]);
+      setPendingFaturas((prev) => {
+        const newFaturas = [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            fileName: file.name,
+            formData: initialFormData,
+            pdfUrl: data.fileUrl || "",
+            selectedClienteId: matchedCliente?.id || "",
+            saved: false,
+          },
+        ];
 
-      // If this is the first fatura, open the modal
-      if (pendingFaturas.length === 0) {
-        setShowVerificationModal(true);
-      }
+        // Open modal when we have faturas
+        if (newFaturas.length > 0) {
+          setShowVerificationModal(true);
+        }
+
+        return newFaturas;
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -423,6 +427,10 @@ export default function FaturasUploadPage() {
       return;
     }
 
+    // Clear previous pending faturas and reset state
+    setPendingFaturas([]);
+    setCurrentFaturaIndex(0);
+
     setFiles((prev) =>
       prev.map((f) => ({ ...f, status: "uploading" as const }))
     );
@@ -566,6 +574,34 @@ export default function FaturasUploadPage() {
     setShowDuplicateDialog(false);
     setDuplicateInfo(null);
     setPendingConfirmData(null);
+  };
+
+  const handleRemoveFatura = (indexToRemove: number) => {
+    setPendingFaturas((prev) => {
+      const newFaturas = prev.filter((_, i) => i !== indexToRemove);
+
+      // If we removed the current fatura, adjust the index
+      if (indexToRemove === currentFaturaIndex) {
+        // Move to previous fatura if possible, otherwise to 0
+        setCurrentFaturaIndex(Math.max(0, indexToRemove - 1));
+      } else if (indexToRemove < currentFaturaIndex) {
+        // If we removed a fatura before the current one, adjust index
+        setCurrentFaturaIndex(currentFaturaIndex - 1);
+      }
+
+      // If no faturas left, close modal
+      if (newFaturas.length === 0) {
+        setShowVerificationModal(false);
+        setFiles([]);
+      }
+
+      return newFaturas;
+    });
+
+    toast({
+      title: "Fatura removida",
+      description: "A fatura foi removida da lista.",
+    });
   };
 
   const handleSaveAll = async () => {
@@ -889,18 +925,36 @@ export default function FaturasUploadPage() {
           </DialogHeader>
 
           {pendingFaturas.length > 1 && (
-            <Tabs value={currentFaturaIndex.toString()} onValueChange={(v) => setCurrentFaturaIndex(parseInt(v))}>
-              <TabsList className="w-full grid" style={{ gridTemplateColumns: `repeat(${pendingFaturas.length}, 1fr)` }}>
-                {pendingFaturas.map((fatura, index) => (
-                  <TabsTrigger key={fatura.id} value={index.toString()} className="text-xs">
-                    {fatura.fileName.length > 20
-                      ? `${fatura.fileName.substring(0, 17)}...`
-                      : fatura.fileName}
-                    {fatura.saved && <Check className="ml-1 h-3 w-3 text-green-500" />}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <div className="border-b">
+              <ScrollArea className="w-full whitespace-nowrap">
+                <Tabs value={currentFaturaIndex.toString()} onValueChange={(v) => setCurrentFaturaIndex(parseInt(v))}>
+                  <TabsList className="inline-flex w-auto h-auto p-1">
+                    {pendingFaturas.map((fatura, index) => (
+                      <TabsTrigger
+                        key={fatura.id}
+                        value={index.toString()}
+                        className="text-xs relative group pr-8 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                      >
+                        <span className="max-w-[120px] truncate inline-block">
+                          {fatura.fileName}
+                        </span>
+                        {fatura.saved && <Check className="ml-1 h-3 w-3 text-green-500 inline-block" />}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveFatura(index);
+                          }}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded"
+                          title="Remover esta fatura"
+                        >
+                          <X className="h-3 w-3 text-destructive" />
+                        </button>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              </ScrollArea>
+            </div>
           )}
 
           <div className="grid gap-6 lg:grid-cols-2">
