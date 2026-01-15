@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -211,17 +212,19 @@ export default function ClientesPage() {
       key: "nome",
       header: "Cliente",
       cell: (cliente: ClienteWithUsina) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Users className="h-4 w-4" />
+        <Link href={`/clientes/${cliente.id}`}>
+          <div className="flex items-center gap-3 hover:bg-muted/50 rounded-md p-2 -m-2 transition-colors cursor-pointer">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-medium">{cliente.nome}</p>
+              <p className="text-sm text-muted-foreground">
+                UC: {cliente.unidadeConsumidora}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="font-medium">{cliente.nome}</p>
-            <p className="text-sm text-muted-foreground">
-              UC: {cliente.unidadeConsumidora}
-            </p>
-          </div>
-        </div>
+        </Link>
       ),
     },
     {
