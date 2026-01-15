@@ -680,68 +680,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Generate placeholders for missing invoices
-  app.post("/api/faturas/generate-placeholders", isAuthenticated, async (req: any, res) => {
-    try {
-      const { mesReferencia } = req.body;
-      
-      if (!mesReferencia) {
-        return res.status(400).json({ message: "mesReferencia is required" });
-      }
-
-      // Get all clients
-      const allClientes = await storage.getClientes();
-      
-      // Filter for active clients (including non-paying ones like Usina/Matriz)
-      // The requirement is to track invoice uploads for ALL active units
-      const activeClientes = allClientes.filter(c => c.ativo);
-      
-      let createdCount = 0;
-      
-      for (const cliente of activeClientes) {
-        // Check if invoice already exists for this client and month
-        const existingFatura = await storage.getFaturaByClienteAndMonth(cliente.id, mesReferencia);
-        
-        if (!existingFatura) {
-          // Create placeholder fatura
-          await storage.createFatura({
-            clienteId: cliente.id,
-            usinaId: cliente.usinaId,
-            mesReferencia,
-            status: "aguardando_upload",
-            // Initialize with zero/empty values
-            consumoScee: "0",
-            consumoNaoCompensado: "0",
-            energiaInjetada: "0",
-            saldoKwh: "0",
-            contribuicaoIluminacao: "0",
-            precoKwh: "0",
-            valorTotal: "0",
-            valorSemDesconto: "0",
-            valorComDesconto: "0",
-            economia: "0",
-            lucro: "0",
-            createdBy: req.user.claims.sub,
-          });
-          createdCount++;
-        }
-      }
-      
-      await logAction(req.user.claims.sub, "gerar_pendencias", "fatura", undefined, { 
-        mesReferencia, 
-        createdCount 
-      });
-      
-      res.json({ 
-        message: `${createdCount} pendências geradas para ${mesReferencia}`,
-        createdCount 
-      });
-    } catch (error) {
-      console.error("Error generating placeholders:", error);
-      res.status(500).json({ message: "Failed to generate placeholders" });
-    }
-  });
-
   // Legacy upload endpoint (creates faturas for all clients of a usina)
   app.post("/api/faturas/upload", isAuthenticated, async (req: any, res) => {
     try {

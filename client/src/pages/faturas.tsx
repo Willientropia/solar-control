@@ -26,7 +26,6 @@ import { UsinaSection } from "@/components/usina-section";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
-  PlusCircle,
   Loader2,
   CheckCircle,
   Clock,
@@ -100,19 +99,6 @@ export default function FaturasNewPage() {
   const faturas = selectedMonth === "all"
     ? allFaturas
     : allFaturas.filter(f => f.mesReferencia === selectedMonth);
-
-  const generatePlaceholdersMutation = useMutation({
-    mutationFn: (mesReferencia: string) =>
-      apiRequest("POST", "/api/faturas/generate-placeholders", { mesReferencia }),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
-      toast({ title: "Faturas geradas!", description: data.message });
-      refetch();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Erro ao gerar faturas", description: error.message, variant: "destructive" });
-    }
-  });
 
   const editFaturaMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Record<string, any> }) => {
@@ -303,26 +289,12 @@ export default function FaturasNewPage() {
         title="Faturas"
         description="Gerencie as faturas de energia dos seus clientes de forma organizada por usina"
         actions={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => generatePlaceholdersMutation.mutate(selectedMonth)}
-              disabled={generatePlaceholdersMutation.isPending || selectedMonth === "all"}
-            >
-              {generatePlaceholdersMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <PlusCircle className="h-4 w-4 mr-2" />
-              )}
-              Gerar Pendências ({selectedMonth})
-            </Button>
-            <Button asChild>
-              <Link href="/faturas/upload">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Faturas
-              </Link>
-            </Button>
-          </div>
+          <Button asChild>
+            <Link href="/faturas/upload">
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Faturas
+            </Link>
+          </Button>
         }
       />
 
@@ -483,16 +455,11 @@ export default function FaturasNewPage() {
                 ? `Não há faturas para o mês de ${selectedMonth}.`
                 : "Não há faturas cadastradas."}
             </p>
-            <Button
-              onClick={() => generatePlaceholdersMutation.mutate(selectedMonth)}
-              disabled={generatePlaceholdersMutation.isPending || selectedMonth === "all"}
-            >
-              {generatePlaceholdersMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <PlusCircle className="h-4 w-4 mr-2" />
-              )}
-              Gerar Pendências
+            <Button asChild>
+              <Link href="/faturas/upload">
+                <Upload className="h-4 w-4 mr-2" />
+                Fazer Upload de Faturas
+              </Link>
             </Button>
           </CardContent>
         </Card>
