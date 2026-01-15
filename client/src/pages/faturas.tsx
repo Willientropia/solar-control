@@ -34,6 +34,7 @@ import {
   FileText,
   Save,
   X,
+  Calculator,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
@@ -132,6 +133,12 @@ export default function FaturasNewPage() {
 
   const handleEditFatura = (fatura: FaturaWithCliente) => {
     setEditingFatura(fatura);
+
+    // Calculate Fio B from existing values
+    const consumoScee = parseToNumber(fatura.consumoScee || "0");
+    const precoFioB = parseToNumber(fatura.precoFioB || "0");
+    const fioBCalculado = consumoScee * precoFioB;
+
     // Populate form with current values
     setEditFormData({
       cpfCnpj: fatura.dadosExtraidos?.cpfCnpj || "",
@@ -148,6 +155,7 @@ export default function FaturasNewPage() {
       consumoNaoCompensado: fatura.consumoNaoCompensado || "",
       precoKwhNaoCompensado: fatura.dadosExtraidos?.precoKwhNaoCompensado || "",
       precoFioB: fatura.precoFioB || "",
+      fioB: formatNumber(fioBCalculado),
       precoAdcBandeira: fatura.precoAdcBandeira || "",
       contribuicaoIluminacao: fatura.contribuicaoIluminacao || "",
       valorTotal: fatura.valorTotal || "",
@@ -188,6 +196,70 @@ export default function FaturasNewPage() {
 
   const updateEditFormField = (field: string, value: string) => {
     setEditFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleRecalculate = () => {
+    if (!editingFatura?.cliente) return;
+
+    const consumoScee = parseToNumber(editFormData.consumoScee || "0");
+    const precoKwh = parseToNumber(editFormData.precoKwh || "0");
+    const valorTotal = parseToNumber(editFormData.valorTotal || "0");
+    const precoFioB = parseToNumber(editFormData.precoFioB || "0");
+
+    console.log("=== RECÁLCULO ===");
+    console.log("Consumo SCEE:", consumoScee);
+    console.log("Preço kWh:", precoKwh);
+    console.log("Valor Total:", valorTotal);
+    console.log("Preço Fio B:", precoFioB);
+
+    // Calculate Fio B
+    const fioBValor = consumoScee * precoFioB;
+
+    // Calculate valorSemDesconto
+    const valorSemDesconto = (consumoScee * precoKwh) + valorTotal - fioBValor;
+
+    let valorComDesconto: number;
+    let economia: number;
+    let lucro: number;
+
+    // Check if client is paying customer or own use (uso próprio)
+    if (!editingFatura.cliente.isPagante) {
+      // Cliente de uso próprio (não pagante):
+      valorComDesconto = 0;
+      economia = 0;
+      lucro = -valorTotal;
+      console.log(`Cliente ${editingFatura.cliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+    } else {
+      // Cliente pagante - cálculo normal com desconto
+      const clientDiscount = parseFloat(editingFatura.cliente.desconto || "0");
+      const discountMultiplier = 1 - (clientDiscount / 100);
+      valorComDesconto = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
+      economia = valorSemDesconto - valorComDesconto;
+      lucro = valorComDesconto - valorTotal;
+      console.log(`Cliente ${editingFatura.cliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+    }
+
+    console.log("Fio B:", fioBValor);
+    console.log("Valor Sem Desconto:", valorSemDesconto);
+    console.log("Valor Com Desconto:", valorComDesconto);
+    console.log("Economia:", economia);
+    console.log("Lucro:", lucro);
+    console.log("================");
+
+    // Update form with recalculated values
+    setEditFormData(prev => ({
+      ...prev,
+      fioB: formatNumber(fioBValor),
+      valorSemDesconto: formatNumber(valorSemDesconto),
+      valorComDesconto: formatNumber(valorComDesconto),
+      economia: formatNumber(economia),
+      lucro: formatNumber(lucro),
+    }));
+
+    toast({
+      title: "Recalculado!",
+      description: "Os campos foram recalculados com sucesso.",
+    });
   };
 
   // Filter usinas based on selection
@@ -428,8 +500,8 @@ export default function FaturasNewPage() {
 
       {/* Edit Modal */}
       <Dialog open={!!editingFatura} onOpenChange={(open) => !open && setEditingFatura(null)}>
-        <DialogContent className="max-w-7xl max-h-[90vh] p-0">
-          <DialogHeader className="p-6 pb-0">
+        <DialogContent className="max-w-7xl h-[95vh] flex flex-col p-0">
+          <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle>Editar Fatura</DialogTitle>
@@ -447,9 +519,9 @@ export default function FaturasNewPage() {
             </div>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4 p-6 overflow-hidden">
+          <div className="grid grid-cols-2 gap-4 p-6 flex-1 overflow-hidden">
             {/* Left side - Form */}
-            <ScrollArea className="h-[calc(90vh-180px)] pr-4">
+            <ScrollArea className="h-full pr-4">
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -584,6 +656,33 @@ export default function FaturasNewPage() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Fio B (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editFormData.fioB || ""}
+                      disabled
+                      className="bg-muted"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Calculado: Consumo SCEE × Preço Fio B
+                    </p>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleRecalculate}
+                      className="w-full"
+                    >
+                      <Calculator className="h-4 w-4 mr-2" />
+                      Recalcular Valores
+                    </Button>
+                  </div>
+                </div>
+
                 <div>
                   <Label>Contribuição Iluminação (R$)</Label>
                   <Input
@@ -664,11 +763,11 @@ export default function FaturasNewPage() {
               {editingFatura?.arquivoPdfUrl ? (
                 <iframe
                   src={editingFatura.arquivoPdfUrl}
-                  className="w-full h-[calc(90vh-180px)]"
+                  className="w-full h-full"
                   title="PDF Preview"
                 />
               ) : (
-                <div className="flex items-center justify-center h-[calc(90vh-180px)]">
+                <div className="flex items-center justify-center h-full">
                   <div className="text-center">
                     <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">Nenhum PDF disponível</p>
@@ -678,7 +777,7 @@ export default function FaturasNewPage() {
             </div>
           </div>
 
-          <DialogFooter className="p-6 pt-0">
+          <DialogFooter className="p-6 pt-4 border-t">
             <Button variant="outline" onClick={() => setEditingFatura(null)}>
               Cancelar
             </Button>
