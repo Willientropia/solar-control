@@ -358,9 +358,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Serve PDF files for preview
-  app.get("/api/faturas/pdf/:filename", isAuthenticated, (req, res) => {
-    const filePath = path.join(uploadDir, req.params.filename);
+  // Serve PDF files for preview (supports nested paths)
+  app.get("/api/faturas/pdf/*", isAuthenticated, (req, res) => {
+    // Extract the path after /api/faturas/pdf/
+    const relativePath = req.params[0];
+    const filePath = path.join(uploadDir, relativePath);
+
+    // Security check: ensure the path doesn't escape uploadDir
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(uploadDir)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
     if (fs.existsSync(filePath)) {
       res.setHeader("Content-Type", "application/pdf");
       res.sendFile(filePath);
@@ -400,6 +409,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return isNaN(parsed) ? "0" : parsed.toString();
   }
 
+  // Helper function to organize uploaded PDF into proper folder structure
+  async function organizePdfFile(oldFilePath: string, cliente: any, usina: any, mesReferencia: string): Promise<string> {
+    if (!oldFilePath || !fs.existsSync(oldFilePath)) {
+      return "";
+    }
+
+    // Parse month reference (e.g., "Jan/2026" -> month: 1, year: 2026)
+    const [monthName, year] = mesReferencia.split("/");
+    const months: Record<string, string> = {
+      "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04",
+      "Mai": "05", "Jun": "06", "Jul": "07", "Ago": "08",
+      "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
+    };
+    const monthNum = months[monthName] || "01";
+    const monthNumInt = parseInt(monthNum);
+
+    // Build new folder structure: Usina-NAME/faturas/YEAR/Mês-N/
+    const usinaFolderName = `Usina-${usina.nome.replace(/\s+/g, "-")}`;
+    const newDir = path.join(uploadDir, usinaFolderName, "faturas", year, `Mês-${monthNumInt}`);
+
+    // Create directories if they don't exist
+    if (!fs.existsSync(newDir)) {
+      fs.mkdirSync(newDir, { recursive: true });
+    }
+
+    // Build new filename: UC-MM-YYYY.pdf
+    const newFileName = `${cliente.unidadeConsumidora}-${monthNum}-${year}.pdf`;
+    const newFilePath = path.join(newDir, newFileName);
+
+    // Move file to new location
+    await fsPromises.rename(oldFilePath, newFilePath);
+
+    // Return relative URL path for database
+    return `/api/faturas/pdf/${usinaFolderName}/faturas/${year}/Mês-${monthNumInt}/${newFileName}`;
+  }
+
   // Confirm and save extracted fatura
   app.post("/api/faturas/confirm", isAuthenticated, async (req: any, res) => {
     try {
@@ -413,6 +458,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cliente = await storage.getCliente(clienteId);
       if (!cliente) {
         return res.status(404).json({ message: "Cliente not found" });
+      }
+
+      // Get usina for folder organization
+      const usina = await storage.getUsina(cliente.usinaId);
+      if (!usina) {
+        return res.status(404).json({ message: "Usina not found" });
       }
 
       // Normalize all numeric fields from Brazilian format
@@ -552,6 +603,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
+      // Organize the uploaded PDF file into proper folder structure
+      let organizedFileUrl = extractedData.fileUrl || null;
+      if (extractedData.fileUrl && normalizedData.mesReferencia) {
+        try {
+          // Get the original file path from the temporary upload
+          const tempFileName = extractedData.fileUrl.replace("/api/faturas/pdf/", "");
+          const tempFilePath = path.join(uploadDir, tempFileName);
+
+          // Reorganize into new structure
+          organizedFileUrl = await organizePdfFile(
+            tempFilePath,
+            cliente,
+            usina,
+            normalizedData.mesReferencia
+          );
+        } catch (error) {
+          console.error("Error organizing PDF file:", error);
+          // Keep original URL if reorganization fails
+        }
+      }
+
       // Create or Update the fatura with extracted data
       let fatura;
 
@@ -577,6 +649,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         economia: normalizedData.economia,
         lucro: normalizedData.lucro,
         status: "aguardando_pagamento", // Update status to waiting for payment
+        arquivoPdfUrl: organizedFileUrl, // Save the organized PDF URL
         createdBy: req.user.claims.sub,
         dadosExtraidos: normalizedData,
       };
@@ -1386,6 +1459,56 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error updating user role:", error);
       res.status(500).json({ message: "Failed to update user role" });
+    }
+  });
+
+  // Maintenance: Cleanup old PDF files (30 days after upload)
+  app.post("/api/maintenance/cleanup-pdfs", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const allFaturas = await storage.getFaturas();
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      let cleanedCount = 0;
+
+      for (const fatura of allFaturas) {
+        // Skip if no PDF or no creation date
+        if (!fatura.arquivoPdfUrl || !fatura.createdAt) continue;
+
+        // Check if PDF is older than 30 days
+        const createdDate = new Date(fatura.createdAt);
+        if (createdDate < thirtyDaysAgo) {
+          try {
+            // Extract file path from URL
+            // URL format: /api/faturas/pdf/Usina-NAME/faturas/YEAR/Mês-N/UC-MM-YYYY.pdf
+            const urlPath = fatura.arquivoPdfUrl.replace("/api/faturas/pdf/", "");
+            const filePath = path.join(uploadDir, urlPath);
+
+            // Delete file if it exists
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`Deleted expired PDF: ${filePath}`);
+            }
+
+            // Update fatura to remove PDF URL (keep the record)
+            await storage.updateFatura(fatura.id, {
+              arquivoPdfUrl: null
+            });
+
+            cleanedCount++;
+          } catch (error) {
+            console.error(`Error cleaning PDF for fatura ${fatura.id}:`, error);
+          }
+        }
+      }
+
+      await logAction(req.user.claims.sub, "cleanup", "pdf", undefined, { cleanedCount });
+      res.json({
+        message: `Limpeza de PDFs concluída. ${cleanedCount} arquivos expirados removidos.`,
+        cleanedCount
+      });
+    } catch (error: any) {
+      console.error("Error cleaning up PDFs:", error);
+      res.status(500).json({ message: "Erro na limpeza de PDFs", error: error.message });
     }
   });
 
