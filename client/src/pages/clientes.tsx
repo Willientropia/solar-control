@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -43,7 +44,9 @@ import { formatNumber, parseToNumber } from "@/lib/utils";
 const clienteFormSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
   cpfCnpj: z.string().optional(),
-  endereco: z.string().optional(),
+  endereco: z.string().optional(), // Campo legado, mantido para compatibilidade
+  enderecoSimplificado: z.string().optional(),
+  enderecoCompleto: z.string().optional(),
   unidadeConsumidora: z.string().min(1, "UC é obrigatória"),
   usinaId: z.string().min(1, "Usina é obrigatória"),
   desconto: z.string().default("15"),
@@ -81,6 +84,8 @@ export default function ClientesPage() {
       nome: "",
       cpfCnpj: "",
       endereco: "",
+      enderecoSimplificado: "",
+      enderecoCompleto: "",
       unidadeConsumidora: "",
       usinaId: "",
       desconto: "15",
@@ -165,6 +170,8 @@ export default function ClientesPage() {
       nome: cliente.nome,
       cpfCnpj: cliente.cpfCnpj || "",
       endereco: cliente.endereco || "",
+      enderecoSimplificado: cliente.enderecoSimplificado || "",
+      enderecoCompleto: cliente.enderecoCompleto || "",
       unidadeConsumidora: cliente.unidadeConsumidora,
       usinaId: cliente.usinaId,
       desconto: formatNumber(cliente.desconto),
@@ -205,17 +212,19 @@ export default function ClientesPage() {
       key: "nome",
       header: "Cliente",
       cell: (cliente: ClienteWithUsina) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Users className="h-4 w-4" />
+        <Link href={`/clientes/${cliente.id}`}>
+          <div className="flex items-center gap-3 hover:bg-muted/50 rounded-md p-2 -m-2 transition-colors cursor-pointer">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-medium">{cliente.nome}</p>
+              <p className="text-sm text-muted-foreground">
+                UC: {cliente.unidadeConsumidora}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="font-medium">{cliente.nome}</p>
-            <p className="text-sm text-muted-foreground">
-              UC: {cliente.unidadeConsumidora}
-            </p>
-          </div>
-        </div>
+        </Link>
       ),
     },
     {
@@ -462,17 +471,40 @@ export default function ClientesPage() {
                       />
                       <FormField
                         control={form.control}
-                        name="endereco"
+                        name="enderecoSimplificado"
                         render={({ field }) => (
-                          <FormItem className="col-span-1 md:col-span-2">
-                            <FormLabel>Endereço (opcional)</FormLabel>
+                          <FormItem>
+                            <FormLabel>Endereço Simplificado (opcional)</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="Ex: Rua das Flores, 123"
+                                placeholder="Ex: SLMB"
                                 {...field}
-                                data-testid="input-cliente-endereco"
+                                data-testid="input-cliente-endereco-simplificado"
                               />
                             </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Usado em relatórios de usina
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="enderecoCompleto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Endereço Completo (opcional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: Av. Principal, Q. 41, L. 17, N. 2237"
+                                {...field}
+                                data-testid="input-cliente-endereco-completo"
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Usado em faturas geradas
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}

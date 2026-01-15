@@ -257,6 +257,56 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/clientes/:id/detalhes", isAuthenticated, async (req, res) => {
+    try {
+      const clienteId = req.params.id;
+
+      // Get cliente with usina
+      const cliente = await storage.getCliente(clienteId);
+      if (!cliente) {
+        return res.status(404).json({ message: "Cliente not found" });
+      }
+
+      // Get usina
+      const usina = await storage.getUsina(cliente.usinaId);
+
+      // Get all faturas for this cliente, ordered by mesReferencia (newest first)
+      const allFaturas = await storage.getFaturas();
+      const clienteFaturas = allFaturas
+        .filter((f: any) => f.clienteId === clienteId)
+        .sort((a: any, b: any) => {
+          // Sort by mesReferencia (format: "Jan/2024")
+          const [mesA, anoA] = a.mesReferencia?.split('/') || ['', ''];
+          const [mesB, anoB] = b.mesReferencia?.split('/') || ['', ''];
+
+          const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+          const mesIndexA = meses.indexOf(mesA);
+          const mesIndexB = meses.indexOf(mesB);
+
+          // First compare years, then months
+          if (anoB !== anoA) {
+            return parseInt(anoB) - parseInt(anoA);
+          }
+          return mesIndexB - mesIndexA;
+        });
+
+      // Calculate total saldo (sum of all saldoKwh)
+      const saldoTotal = clienteFaturas.reduce((acc: number, fatura: any) => {
+        return acc + parseFloat(fatura.saldoKwh || "0");
+      }, 0);
+
+      res.json({
+        ...cliente,
+        usina,
+        faturas: clienteFaturas,
+        saldoTotal: saldoTotal.toFixed(2),
+      });
+    } catch (error) {
+      console.error("Error fetching cliente detalhes:", error);
+      res.status(500).json({ message: "Failed to fetch cliente detalhes" });
+    }
+  });
+
   app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
     try {
       const data = insertClienteSchema.parse(req.body);
