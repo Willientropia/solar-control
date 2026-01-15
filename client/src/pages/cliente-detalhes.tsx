@@ -33,6 +33,16 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import {
   ArrowLeft,
   Edit,
   TrendingUp,
@@ -42,6 +52,7 @@ import {
   CheckCircle,
   XCircle,
   FileText,
+  BarChart3,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
@@ -229,6 +240,88 @@ export default function ClienteDetalhesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Gráfico de Consumo */}
+      {faturas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Consumo ao Longo do Tempo</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Evolução do consumo SCEE e saldo de créditos
+                </p>
+              </div>
+              <BarChart3 className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart
+                data={[...faturas].reverse().map((fatura) => ({
+                  mes: fatura.mesReferencia,
+                  consumoScee: parseFloat(fatura.consumoScee || "0"),
+                  saldoKwh: parseFloat(fatura.saldoKwh || "0"),
+                }))}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="mes"
+                  className="text-xs"
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
+                />
+                <YAxis
+                  className="text-xs"
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
+                  label={{
+                    value: "kWh",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fill: "hsl(var(--muted-foreground))" },
+                  }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--background))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "6px",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                  formatter={(value: number) => [
+                    `${formatNumber(value)} kWh`,
+                    undefined,
+                  ]}
+                />
+                <Legend
+                  wrapperStyle={{
+                    paddingTop: "20px",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="consumoScee"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  name="Consumo SCEE"
+                  dot={{ fill: "hsl(var(--primary))", r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="saldoKwh"
+                  stroke="hsl(var(--chart-2))"
+                  strokeWidth={2}
+                  name="Saldo (Créditos)"
+                  dot={{ fill: "hsl(var(--chart-2))", r: 4 }}
+                  activeDot={{ r: 6 }}
+                  strokeDasharray="5 5"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Histórico de Faturas */}
       <Card>
