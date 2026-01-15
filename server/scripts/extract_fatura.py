@@ -173,13 +173,14 @@ def sanitize_to_float(value):
     return 0.0
 
 
-def format_to_br(value):
-    """Formata float para string BR (1.000,00)."""
+def format_to_br(value, decimals=2):
+    """Formata float para string BR com precisão configurável."""
     try:
         val = float(value)
-        return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        formatted = f"{val:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return formatted
     except (ValueError, TypeError):
-        return "0,00"
+        return "0," + "0" * decimals
 
 
 def extract_data_from_text(text, pdf_path):
@@ -380,24 +381,39 @@ def main():
     # Calcula valores
     data = calculate_values(data, args.price_kwh, args.discount)
     
-    # Formata campos numéricos para string BR
-    numeric_fields = [
-        'consumoKwh', 'valorTotal', 'saldoKwh', 'contribuicaoIluminacao',
-        'energiaInjetada', 'precoEnergiaInjetada', 'consumoScee', 'precoEnergiaCompensada',
-        'precoFioB', 'consumoNaoCompensado', 'precoKwhNaoCompensado', 'precoAdcBandeira',
-        'geracaoUltimoCiclo', 'fioB', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'
+    # Campos de preço/tarifa que devem manter até 6 casas decimais
+    price_fields = [
+        'precoFioB', 'precoAdcBandeira', 'precoKwhNaoCompensado',
+        'precoEnergiaInjetada', 'precoEnergiaCompensada'
     ]
-    
-    for field in numeric_fields:
+
+    # Campos de valores monetários (2 decimais)
+    monetary_fields = [
+        'valorTotal', 'contribuicaoIluminacao', 'fioB',
+        'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro'
+    ]
+
+    # Campos de quantidade (kWh) (2 decimais)
+    quantity_fields = [
+        'consumoKwh', 'saldoKwh', 'energiaInjetada', 'consumoScee',
+        'consumoNaoCompensado', 'geracaoUltimoCiclo'
+    ]
+
+    # Formata campos de preço com 6 decimais
+    for field in price_fields:
         if field in data and data[field] is not None:
-            # Primeiro sanitiza para garantir que é float correto
             float_val = sanitize_to_float(data[field])
-            # Depois formata para BR
-            data[field] = format_to_br(float_val)
+            data[field] = format_to_br(float_val, decimals=6)
+
+    # Formata campos monetários com 2 decimais
+    for field in monetary_fields + quantity_fields:
+        if field in data and data[field] is not None:
+            float_val = sanitize_to_float(data[field])
+            data[field] = format_to_br(float_val, decimals=2)
     
     # Adiciona flag de sucesso
     data['success'] = True
-    data['precoKwhUsado'] = args.price_kwh
+    data['precoKwhUsado'] = format_to_br(args.price_kwh, decimals=6)
     data['descontoUsado'] = args.discount
 
     # Retorna JSON
