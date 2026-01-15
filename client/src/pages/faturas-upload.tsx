@@ -911,7 +911,7 @@ export default function FaturasUploadPage() {
       </div>
 
       <Dialog open={showVerificationModal} onOpenChange={setShowVerificationModal}>
-        <DialogContent className="max-w-6xl max-h-[90vh]">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>Verificar Dados Extraídos</DialogTitle>
             <DialogDescription>
@@ -925,35 +925,33 @@ export default function FaturasUploadPage() {
           </DialogHeader>
 
           {pendingFaturas.length > 1 && (
-            <div className="border-b">
-              <ScrollArea className="w-full whitespace-nowrap">
-                <Tabs value={currentFaturaIndex.toString()} onValueChange={(v) => setCurrentFaturaIndex(parseInt(v))}>
-                  <TabsList className="inline-flex w-auto h-auto p-1">
-                    {pendingFaturas.map((fatura, index) => (
-                      <TabsTrigger
-                        key={fatura.id}
-                        value={index.toString()}
-                        className="text-xs relative group pr-8 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            <div className="border-b overflow-x-auto">
+              <Tabs value={currentFaturaIndex.toString()} onValueChange={(v) => setCurrentFaturaIndex(parseInt(v))}>
+                <TabsList className="inline-flex w-max h-auto p-1 mb-2">
+                  {pendingFaturas.map((fatura, index) => (
+                    <TabsTrigger
+                      key={fatura.id}
+                      value={index.toString()}
+                      className="text-xs relative group pr-8 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap"
+                    >
+                      <span className="max-w-[120px] truncate inline-block">
+                        {fatura.fileName}
+                      </span>
+                      {fatura.saved && <Check className="ml-1 h-3 w-3 text-green-500 inline-block" />}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveFatura(index);
+                        }}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded"
+                        title="Remover esta fatura"
                       >
-                        <span className="max-w-[120px] truncate inline-block">
-                          {fatura.fileName}
-                        </span>
-                        {fatura.saved && <Check className="ml-1 h-3 w-3 text-green-500 inline-block" />}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveFatura(index);
-                          }}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded"
-                          title="Remover esta fatura"
-                        >
-                          <X className="h-3 w-3 text-destructive" />
-                        </button>
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              </ScrollArea>
+                        <X className="h-3 w-3 text-destructive" />
+                      </button>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
           )}
 
