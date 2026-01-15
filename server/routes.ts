@@ -876,9 +876,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
           
           const pdfUrl = `/uploads/faturas_geradas/${outputFilename}`;
-          await storage.updateFatura(faturaId, { faturaGeradaUrl: pdfUrl });
+          await storage.updateFatura(faturaId, {
+            faturaGeradaUrl: pdfUrl,
+            faturaClienteGeradaAt: new Date()
+          });
           await logAction(req.user.claims.sub, "gerar_pdf", "fatura", faturaId);
-          
+
           res.json({ success: true, pdfUrl });
         } catch (e) {
           console.error("Error parsing PDF result:", stdout, e);
@@ -888,6 +891,98 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error: any) {
       console.error("Error generating PDF:", error);
       res.status(500).json({ message: "Failed to generate PDF", error: error.message });
+    }
+  });
+
+  // Mark invoice as sent to client
+  app.patch("/api/faturas/:id/marcar-enviada", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteEnviadaAt: new Date()
+      });
+
+      await logAction(req.user.claims.sub, "marcar_enviada", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura marcada como enviada ao cliente" });
+    } catch (error: any) {
+      console.error("Error marking invoice as sent:", error);
+      res.status(500).json({ message: "Failed to mark invoice as sent", error: error.message });
+    }
+  });
+
+  // Mark invoice as received from client
+  app.patch("/api/faturas/:id/marcar-recebida", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteRecebidaAt: new Date()
+      });
+
+      await logAction(req.user.claims.sub, "marcar_recebida", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura marcada como recebida do cliente" });
+    } catch (error: any) {
+      console.error("Error marking invoice as received:", error);
+      res.status(500).json({ message: "Failed to mark invoice as received", error: error.message });
+    }
+  });
+
+  // Unmark invoice as sent
+  app.patch("/api/faturas/:id/desmarcar-enviada", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteEnviadaAt: null
+      });
+
+      await logAction(req.user.claims.sub, "desmarcar_enviada", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura desmarcada como enviada" });
+    } catch (error: any) {
+      console.error("Error unmarking invoice as sent:", error);
+      res.status(500).json({ message: "Failed to unmark invoice as sent", error: error.message });
+    }
+  });
+
+  // Unmark invoice as received
+  app.patch("/api/faturas/:id/desmarcar-recebida", isAuthenticated, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteRecebidaAt: null
+      });
+
+      await logAction(req.user.claims.sub, "desmarcar_recebida", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura desmarcada como recebida" });
+    } catch (error: any) {
+      console.error("Error unmarking invoice as received:", error);
+      res.status(500).json({ message: "Failed to unmark invoice as received", error: error.message });
     }
   });
 

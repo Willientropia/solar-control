@@ -95,10 +95,15 @@ export const faturas = pgTable("faturas", {
   
   // Metadados
   dadosExtraidos: jsonb("dados_extraidos"),
-  status: text("status").notNull().default("aguardando_upload"), // aguardando_upload, aguardando_pagamento, pagamento_pendente, pago
+  status: text("status").notNull().default("aguardando_upload"), // aguardando_upload, aguardando_pagamento, pagamento_pendente_confirmacao, pago
   arquivoPdfUrl: text("arquivo_pdf_url"),
   faturaGeradaUrl: text("fatura_gerada_url"),
-  
+
+  // Rastreamento da fatura do cliente (com desconto)
+  faturaClienteGeradaAt: timestamp("fatura_cliente_gerada_at"),
+  faturaClienteEnviadaAt: timestamp("fatura_cliente_enviada_at"),
+  faturaClienteRecebidaAt: timestamp("fatura_cliente_recebida_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   createdBy: varchar("created_by").references(() => users.id),
