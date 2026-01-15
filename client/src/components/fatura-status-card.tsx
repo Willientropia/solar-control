@@ -306,12 +306,15 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Download original */}
+            {/* Download original - always visible, dimmed if expired */}
             {fatura.arquivoPdfUrl && (
               <Button
                 variant="outline"
                 size="sm"
                 asChild
+                className={cn(
+                  expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50"
+                )}
               >
                 <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
                   <Download className="h-4 w-4 mr-2" />
@@ -320,12 +323,15 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
               </Button>
             )}
 
-            {/* Edit button */}
-            {fatura.arquivoPdfUrl && expirationInfo && expirationInfo.daysLeft > 0 && (
+            {/* Edit button - always visible, dimmed if expired */}
+            {fatura.arquivoPdfUrl && (
               <Button
                 variant="outline"
                 size="sm"
                 asChild
+                className={cn(
+                  expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50 pointer-events-none"
+                )}
               >
                 <Link href={`/faturas/upload?edit=${fatura.id}`}>
                   <Edit className="h-4 w-4 mr-2" />
