@@ -997,6 +997,141 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Generate cliente economia relatório
+  app.post("/api/clientes/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
+    try {
+      const clienteId = req.params.id;
+      const { mesInicial, mesFinal } = req.body;
+
+      if (!mesInicial || !mesFinal) {
+        return res.status(400).json({ message: "mesInicial and mesFinal are required" });
+      }
+
+      // Get cliente
+      const cliente = await storage.getCliente(clienteId);
+      if (!cliente) {
+        return res.status(404).json({ message: "Cliente not found" });
+      }
+
+      // Get all faturas for this cliente
+      const allFaturas = await storage.getFaturas();
+      const clienteFaturas = allFaturas.filter((f: any) => f.clienteId === clienteId);
+
+      // Function to parse month/year string to comparable value
+      const parseMonthYear = (mesRef: string) => {
+        const [mes, ano] = mesRef.split('/');
+        const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const mesIndex = meses.indexOf(mes);
+        return parseInt(ano) * 12 + mesIndex;
+      };
+
+      const mesInicialValue = parseMonthYear(mesInicial);
+      const mesFinalValue = parseMonthYear(mesFinal);
+
+      // Filter faturas within the period
+      const faturasPeriodo = clienteFaturas
+        .filter((f: any) => {
+          const mesValue = parseMonthYear(f.mesReferencia);
+          return mesValue >= mesInicialValue && mesValue <= mesFinalValue;
+        })
+        .sort((a: any, b: any) => {
+          return parseMonthYear(a.mesReferencia) - parseMonthYear(b.mesReferencia);
+        });
+
+      if (faturasPeriodo.length === 0) {
+        return res.status(400).json({ message: "Nenhuma fatura encontrada no período selecionado" });
+      }
+
+      // Calculate totals
+      const economiaTotal = faturasPeriodo.reduce((acc: number, f: any) => {
+        return acc + parseFloat(f.economia || "0");
+      }, 0);
+
+      const valorSemDescontoTotal = faturasPeriodo.reduce((acc: number, f: any) => {
+        return acc + parseFloat(f.valorSemDesconto || "0");
+      }, 0);
+
+      const valorComDescontoTotal = faturasPeriodo.reduce((acc: number, f: any) => {
+        return acc + parseFloat(f.valorComDesconto || "0");
+      }, 0);
+
+      const { spawn } = await import("child_process");
+      const outputDir = path.join(process.cwd(), "uploads", "relatorios_clientes");
+      await fsPromises.mkdir(outputDir, { recursive: true });
+
+      const outputFilename = `relatorio_${cliente.unidadeConsumidora}_${mesInicial.replace("/", "_")}_a_${mesFinal.replace("/", "_")}.pdf`;
+      const outputPath = path.join(outputDir, outputFilename);
+
+      const pdfData = {
+        nomeCliente: cliente.nome,
+        enderecoCompleto: cliente.enderecoCompleto || cliente.endereco || "",
+        unidadeConsumidora: cliente.unidadeConsumidora,
+        periodo: `${mesInicial} a ${mesFinal}`,
+        mesInicial,
+        mesFinal,
+        descontoPercentual: cliente.desconto,
+        economiaTotal: economiaTotal.toFixed(2),
+        valorSemDescontoTotal: valorSemDescontoTotal.toFixed(2),
+        valorComDescontoTotal: valorComDescontoTotal.toFixed(2),
+        faturas: faturasPeriodo.map((f: any) => ({
+          mes: f.mesReferencia,
+          consumoScee: f.consumoScee,
+          valorSemDesconto: f.valorSemDesconto,
+          valorComDesconto: f.valorComDesconto,
+          economia: f.economia,
+        })),
+      };
+
+      console.log(`[Relatório Generation] Cliente ID: ${clienteId}`);
+      console.log(`[Relatório Generation] Cliente: ${cliente.nome} (UC: ${cliente.unidadeConsumidora})`);
+      console.log(`[Relatório Generation] Período: ${mesInicial} a ${mesFinal}`);
+      console.log(`[Relatório Generation] Faturas no período: ${faturasPeriodo.length}`);
+      console.log(`[Relatório Generation] Economia total: R$ ${economiaTotal.toFixed(2)}`);
+
+      const pythonProcess = spawn("python3", [
+        path.join(process.cwd(), "server", "scripts", "generate_cliente_relatorio.py"),
+        JSON.stringify(pdfData),
+        outputPath,
+      ]);
+
+      let stdout = "";
+      let stderr = "";
+
+      pythonProcess.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      pythonProcess.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      pythonProcess.on("close", async (code) => {
+        if (code !== 0) {
+          console.error("Relatório generation failed:", stderr);
+          return res.status(500).json({ message: "Failed to generate relatório", error: stderr });
+        }
+
+        try {
+          const result = JSON.parse(stdout);
+          if (result.error) {
+            return res.status(500).json({ message: result.error });
+          }
+
+          const pdfUrl = `/uploads/relatorios_clientes/${outputFilename}`;
+          await logAction(req.user.claims.sub, "gerar_relatorio", "cliente", clienteId);
+
+          res.json({ success: true, pdfUrl });
+        } catch (e) {
+          console.error("Error parsing relatório result:", stdout, e);
+          res.status(500).json({ message: "Failed to parse relatório generation result" });
+        }
+      });
+    } catch (error: any) {
+      console.error("Error generating relatório:", error);
+      res.status(500).json({ message: "Failed to generate relatório", error: error.message });
+    }
+  });
+
   // Mark invoice as sent to client
   app.patch("/api/faturas/:id/marcar-enviada", isAuthenticated, async (req: any, res) => {
     try {

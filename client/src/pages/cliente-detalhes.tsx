@@ -53,6 +53,7 @@ import {
   XCircle,
   FileText,
   BarChart3,
+  Download,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
@@ -71,6 +72,10 @@ export default function ClienteDetalhesPage() {
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Record<string, any>>({});
+
+  // Relatório de economia
+  const [mesInicial, setMesInicial] = useState<string>("");
+  const [mesFinal, setMesFinal] = useState<string>("");
 
   // Fetch cliente details
   const { data: cliente, isLoading } = useQuery<ClienteDetalhes>({
@@ -96,6 +101,50 @@ export default function ClienteDetalhesPage() {
       toast({ title: "Erro ao atualizar cliente", variant: "destructive" });
     },
   });
+
+  // Generate relatório mutation
+  const generateRelatorioMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/clientes/${clienteId}/generate-relatorio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mesInicial, mesFinal }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Erro ao gerar relatório");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.pdfUrl) {
+        window.open(data.pdfUrl, "_blank");
+      }
+      toast({ title: "Relatório gerado com sucesso!" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erro ao gerar relatório",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleGerarRelatorio = () => {
+    if (!mesInicial || !mesFinal) {
+      toast({
+        title: "Selecione o período",
+        description: "Escolha o mês inicial e final para gerar o relatório.",
+        variant: "destructive",
+      });
+      return;
+    }
+    generateRelatorioMutation.mutate();
+  };
 
   const handleOpenEditDialog = () => {
     if (cliente) {
@@ -319,6 +368,67 @@ export default function ClienteDetalhesPage() {
                 />
               </LineChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Geração de Relatório de Economia */}
+      {faturas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Relatório de Economia</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gere um relatório PDF com a economia acumulada em um período
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Label>Mês Inicial</Label>
+                <Select value={mesInicial} onValueChange={setMesInicial}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o mês inicial" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {faturas.map((fatura) => (
+                      <SelectItem key={`inicial-${fatura.id}`} value={fatura.mesReferencia}>
+                        {fatura.mesReferencia}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <Label>Mês Final</Label>
+                <Select value={mesFinal} onValueChange={setMesFinal}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o mês final" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {faturas.map((fatura) => (
+                      <SelectItem key={`final-${fatura.id}`} value={fatura.mesReferencia}>
+                        {fatura.mesReferencia}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={handleGerarRelatorio}
+                  disabled={generateRelatorioMutation.isPending || !mesInicial || !mesFinal}
+                >
+                  {generateRelatorioMutation.isPending ? (
+                    <>Gerando...</>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Gerar Relatório PDF
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
