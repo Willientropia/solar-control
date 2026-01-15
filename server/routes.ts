@@ -929,7 +929,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!cliente) {
         return res.status(404).json({ message: "Cliente not found" });
       }
-      
+
+      // Log dos campos de endereço para debug
+      console.log(`[PDF Generation] Endereços do cliente ${cliente.nome}:`, {
+        endereco: cliente.endereco,
+        enderecoSimplificado: cliente.enderecoSimplificado,
+        enderecoCompleto: cliente.enderecoCompleto
+      });
+
       const { spawn } = await import("child_process");
       const outputDir = path.join(process.cwd(), "uploads", "faturas_geradas");
       await fsPromises.mkdir(outputDir, { recursive: true });

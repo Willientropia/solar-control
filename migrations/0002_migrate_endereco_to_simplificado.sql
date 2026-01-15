@@ -1,8 +1,12 @@
--- Migração de dados: copiar 'endereco' para 'enderecoSimplificado' quando vazio
--- E copiar 'endereco' para 'enderecoCompleto' quando vazio
+-- Migração de dados: copiar 'endereco' para 'enderecoSimplificado' e 'enderecoCompleto' quando vazios
 UPDATE clientes
 SET
-  endereco_simplificado = endereco,
-  endereco_completo = COALESCE(endereco_completo, endereco)
-WHERE endereco IS NOT NULL
-  AND (endereco_simplificado IS NULL OR endereco_simplificado = '');
+  endereco_simplificado = CASE
+    WHEN endereco_simplificado IS NULL OR endereco_simplificado = '' THEN endereco
+    ELSE endereco_simplificado
+  END,
+  endereco_completo = CASE
+    WHEN endereco_completo IS NULL OR endereco_completo = '' THEN endereco
+    ELSE endereco_completo
+  END
+WHERE endereco IS NOT NULL AND endereco != '';
