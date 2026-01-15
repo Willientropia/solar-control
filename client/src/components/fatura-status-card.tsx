@@ -20,6 +20,8 @@ import {
   Trash2,
   Clock,
   AlertTriangle,
+  Edit,
+  Calendar,
 } from "lucide-react";
 import { FaturaFlowIndicators } from "./fatura-flow-indicators";
 import { formatCurrency } from "@/lib/utils";
@@ -51,6 +53,43 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
   };
 
   const expirationInfo = getDaysUntilExpiration();
+
+  // Check payment due date
+  const getVencimentoStatus = () => {
+    if (!fatura.dataVencimento) return null;
+
+    try {
+      // Parse DD/MM/YYYY format
+      const [day, month, year] = fatura.dataVencimento.split('/');
+      const dueDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+
+      const diffTime = dueDate.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      const isPaid = fatura.status === "pago";
+
+      if (isPaid) {
+        return { status: "paid", days: diffDays, text: "Pago" };
+      } else if (diffDays < 0) {
+        return { status: "overdue", days: Math.abs(diffDays), text: `Atrasado há ${Math.abs(diffDays)}d` };
+      } else if (diffDays === 0) {
+        return { status: "today", days: 0, text: "Vence hoje" };
+      } else if (diffDays <= 3) {
+        return { status: "urgent", days: diffDays, text: `Vence em ${diffDays}d` };
+      } else if (diffDays <= 7) {
+        return { status: "soon", days: diffDays, text: `Vence em ${diffDays}d` };
+      } else {
+        return { status: "normal", days: diffDays, text: `Vence em ${diffDays}d` };
+      }
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const vencimentoStatus = getVencimentoStatus();
 
   // Mutations
   const marcarEnviadaMutation = useMutation({
@@ -258,6 +297,59 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh }: FaturaStatusCar
 
             {/* Flow indicators */}
             <FaturaFlowIndicators fatura={fatura} cliente={cliente} compact />
+
+            {/* Due date and quick actions */}
+            <div className="flex items-center gap-2 pt-2">
+              {/* Due date badge */}
+              {vencimentoStatus && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "flex items-center gap-1 text-xs",
+                    vencimentoStatus.status === "paid" && "border-green-500 text-green-600 dark:text-green-400",
+                    vencimentoStatus.status === "overdue" && "border-destructive text-destructive bg-destructive/10",
+                    vencimentoStatus.status === "today" && "border-orange-500 text-orange-600 dark:text-orange-400 animate-pulse",
+                    vencimentoStatus.status === "urgent" && "border-red-500 text-red-600 dark:text-red-400",
+                    vencimentoStatus.status === "soon" && "border-orange-500 text-orange-600 dark:text-orange-400",
+                    vencimentoStatus.status === "normal" && "border-muted-foreground/30"
+                  )}
+                >
+                  <Calendar className="h-3 w-3" />
+                  {fatura.dataVencimento} • {vencimentoStatus.text}
+                </Badge>
+              )}
+
+              {/* Quick action buttons */}
+              <div className="flex items-center gap-1 ml-auto">
+                {fatura.arquivoPdfUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    asChild
+                    title="Baixar fatura original"
+                  >
+                    <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
+                      <Download className="h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
+
+                {fatura.arquivoPdfUrl && expirationInfo && expirationInfo.daysLeft > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    asChild
+                    title="Editar fatura"
+                  >
+                    <Link href={`/faturas/upload?edit=${fatura.id}`}>
+                      <Edit className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
 
             {/* Values */}
             <div className="flex items-center gap-4 pt-2 border-t">
