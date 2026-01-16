@@ -463,7 +463,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/faturas", isAuthenticated, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
-      const faturas = await storage.getFaturas(status);
+      const usinaId = req.query.usinaId as string | undefined;
+      let mesReferencia = req.query.mesReferencia as string | undefined;
+
+      // Normalizar mês para MAIÚSCULO (JAN/2026, DEZ/2025) para garantir consistência
+      if (mesReferencia) {
+        mesReferencia = mesReferencia.toUpperCase();
+      }
+
+      const faturas = await storage.getFaturas(status, usinaId, mesReferencia);
       res.json(faturas);
     } catch (error) {
       console.error("Error fetching faturas:", error);

@@ -89,8 +89,6 @@ export default function FaturasNewPage() {
     queryKey: ["/api/faturas", selectedUsinaId, selectedMonth],
     queryFn: () => {
       const url = `/api/faturas?usinaId=${selectedUsinaId !== "all" ? selectedUsinaId : ""}&mesReferencia=${selectedMonth !== "all" ? selectedMonth : ""}`;
-      console.log("🔍 DEBUG - URL da API:", url);
-      console.log("🔍 DEBUG - Mês selecionado:", selectedMonth);
       return apiRequest("GET", url).then(r => r.json());
     }
   });
@@ -98,17 +96,7 @@ export default function FaturasNewPage() {
   // Filter faturas by selected month if not "all"
   const faturas = selectedMonth === "all"
     ? allFaturas
-    : allFaturas.filter(f => {
-        console.log("🔍 DEBUG - Comparando:", {
-          faturaMonth: f.mesReferencia,
-          selectedMonth,
-          match: f.mesReferencia === selectedMonth
-        });
-        return f.mesReferencia === selectedMonth;
-      });
-
-  console.log("🔍 DEBUG - Total faturas da API:", allFaturas.length);
-  console.log("🔍 DEBUG - Faturas após filtro:", faturas.length);
+    : allFaturas.filter(f => f.mesReferencia === selectedMonth);
 
   const editFaturaMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Record<string, any> }) => {
