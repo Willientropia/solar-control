@@ -174,17 +174,41 @@ export class DatabaseStorage implements IStorage {
 
     const result = await query;
 
-    return result
+    console.log("🔍 DEBUG getFaturas - Total faturas do banco:", result.length);
+    console.log("🔍 DEBUG getFaturas - Filtros recebidos:", { status, usinaId, mesReferencia });
+
+    // Log primeiros 3 meses para ver formato
+    if (result.length > 0) {
+      console.log("🔍 DEBUG getFaturas - Primeiros 3 meses no banco:",
+        result.slice(0, 3).map(r => r.faturas.mesReferencia)
+      );
+    }
+
+    const filtered = result
       .filter((row) => {
         const statusMatch = !status || row.faturas.status === status;
         const usinaMatch = !usinaId || row.faturas.usinaId === usinaId || row.clientes?.usinaId === usinaId;
         const mesMatch = !mesReferencia || row.faturas.mesReferencia === mesReferencia;
+
+        // Log apenas se estiver filtrando por mês e não der match (para debug)
+        if (mesReferencia && !mesMatch) {
+          console.log("🔍 DEBUG - Não deu match:", {
+            faturaMes: row.faturas.mesReferencia,
+            filtroMes: mesReferencia,
+            igual: row.faturas.mesReferencia === mesReferencia
+          });
+        }
+
         return statusMatch && usinaMatch && mesMatch;
       })
       .map((row) => ({
         ...row.faturas,
         cliente: row.clientes || undefined,
       }));
+
+    console.log("🔍 DEBUG getFaturas - Faturas após filtro:", filtered.length);
+
+    return filtered;
   }
 
   async getFatura(id: string): Promise<Fatura | undefined> {
