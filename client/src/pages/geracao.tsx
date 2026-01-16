@@ -29,8 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { MonthYearPicker } from "@/components/ui/month-year-picker";
-import { formatNumber, parseToNumber } from "@/lib/utils";
+import { MonthPicker } from "@/components/month-picker";
+import { formatNumber, parseToNumber, normalizeMonth } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -118,6 +118,7 @@ export default function GeracaoPage() {
   const handleSubmit = (data: GeracaoFormData) => {
     const formattedData = {
       ...data,
+      mesReferencia: normalizeMonth(data.mesReferencia), // Normalizar para MAIÚSCULO
       kwhGerado: parseToNumber(data.kwhGerado).toFixed(2),
     };
 
@@ -303,9 +304,10 @@ export default function GeracaoPage() {
                       <FormItem>
                         <FormLabel>Mês de Referência</FormLabel>
                         <FormControl>
-                          <MonthYearPicker
+                          <MonthPicker
                             value={field.value}
                             onChange={field.onChange}
+                            placeholder="Selecione o mês"
                           />
                         </FormControl>
                         <FormMessage />
