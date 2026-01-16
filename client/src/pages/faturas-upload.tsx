@@ -194,7 +194,11 @@ export default function FaturasUploadPage() {
     queryKey: ["/api/clientes"],
   });
 
-  const filteredClientes = clientes.filter((c) => c.usinaId === selectedUsinaId);
+  // Se uma usina foi selecionada, filtrar apenas clientes dela
+  // Caso contrário, mostrar todos os clientes
+  const filteredClientes = selectedUsinaId
+    ? clientes.filter((c) => c.usinaId === selectedUsinaId)
+    : clientes;
   const selectedUsina = usinas.find((u) => u.id === selectedUsinaId);
 
   // Get current fatura data
@@ -245,9 +249,15 @@ export default function FaturasUploadPage() {
           : precoKwh
       );
 
-      const matchedCliente = filteredClientes.find(
+      // Buscar cliente pela UC em TODOS os clientes (não apenas os filtrados)
+      const matchedCliente = clientes.find(
         (c) => c.unidadeConsumidora === data.unidadeConsumidora
       );
+
+      // Se encontrou o cliente e não há usina selecionada, definir automaticamente
+      if (matchedCliente && !selectedUsinaId) {
+        setSelectedUsinaId(matchedCliente.usinaId);
+      }
 
       // Add to pending faturas
       setPendingFaturas((prev) => {
@@ -861,13 +871,13 @@ export default function FaturasUploadPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Usina</Label>
+                <Label>Usina (Opcional)</Label>
                 <Select
                   value={selectedUsinaId}
                   onValueChange={setSelectedUsinaId}
                 >
                   <SelectTrigger data-testid="select-upload-usina">
-                    <SelectValue placeholder="Selecione a usina" />
+                    <SelectValue placeholder="Detecção automática pela UC" />
                   </SelectTrigger>
                   <SelectContent>
                     {usinas.map((usina) => (
@@ -877,6 +887,9 @@ export default function FaturasUploadPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  A usina será identificada automaticamente pela UC do cliente. Selecione manualmente apenas se quiser filtrar clientes.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -913,7 +926,6 @@ export default function FaturasUploadPage() {
             onClick={handleExtract}
             disabled={
               files.length === 0 ||
-              !selectedUsinaId ||
               extractMutation.isPending
             }
             data-testid="button-process-upload"
