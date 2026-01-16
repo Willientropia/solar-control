@@ -115,6 +115,7 @@ const FIELD_CONFIG: {
   { key: "endereco", label: "Endereço", type: "text" },
   { key: "unidadeConsumidora", label: "Unidade Consumidora", type: "text" },
   { key: "mesReferencia", label: "Mês de Referência", type: "text" },
+  { key: "precoKwhUsado", label: "Preço kWh Usado nos Cálculos (R$)", type: "text" },
   { key: "dataVencimento", label: "Data de Vencimento", type: "text" },
   { key: "leituraAnterior", label: "Leitura Anterior", type: "text" },
   { key: "leituraAtual", label: "Leitura Atual", type: "text" },
@@ -173,7 +174,7 @@ export default function FaturasUploadPage() {
   const { toast } = useToast();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("");
-  const [precoKwh, setPrecoKwh] = useState<string>("1.20");
+  const [precoKwh, setPrecoKwh] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [pendingFaturas, setPendingFaturas] = useState<PendingFatura[]>([]);
@@ -906,61 +907,6 @@ export default function FaturasUploadPage() {
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Configurações</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Usina (Opcional)</Label>
-                <Select
-                  value={selectedUsinaId}
-                  onValueChange={setSelectedUsinaId}
-                >
-                  <SelectTrigger data-testid="select-upload-usina">
-                    <SelectValue placeholder="Detecção automática pela UC" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {usinas.map((usina) => (
-                      <SelectItem key={usina.id} value={usina.id}>
-                        {usina.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  A usina será identificada automaticamente pela UC do cliente. Selecione manualmente apenas se quiser filtrar clientes.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Preço do kWh (R$) - Opcional</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  placeholder="Auto-detectado pelo mês"
-                  value={precoKwh}
-                  onChange={(e) => setPrecoKwh(e.target.value)}
-                  data-testid="input-preco-kwh"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Será detectado automaticamente após a extração baseado no mês da fatura.
-                </p>
-              </div>
-
-              {selectedUsina && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground">
-                    Desconto padrão: <strong>{selectedUsina.descontoPadrao}%</strong>
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Clientes: <strong>{filteredClientes.length}</strong>
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           <Button
             className="w-full"
             size="lg"
