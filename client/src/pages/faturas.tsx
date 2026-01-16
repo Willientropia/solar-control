@@ -37,21 +37,15 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
-import { formatCurrency, parseToNumber, formatNumber } from "@/lib/utils";
+import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface FaturaWithCliente extends Fatura {
   cliente?: Cliente;
 }
 
-function getCurrentMonthRef(): string {
-  const now = new Date();
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  return `${months[now.getMonth()]}/${now.getFullYear()}`;
-}
-
 function getRecentMonths(count = 12): string[] {
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
   const result = [];
   const now = new Date();
 

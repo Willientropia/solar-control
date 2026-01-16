@@ -257,7 +257,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/precos-kwh/mes/:mesReferencia", isAuthenticated, async (req, res) => {
     try {
-      const preco = await storage.getPrecoKwhByMes(req.params.mesReferencia);
+      // Normalizar mês para MAIÚSCULO antes de buscar
+      const mesNormalizado = req.params.mesReferencia.toUpperCase();
+      const preco = await storage.getPrecoKwhByMes(mesNormalizado);
       if (!preco) {
         return res.status(404).json({ message: "Preço kWh not found for this month" });
       }

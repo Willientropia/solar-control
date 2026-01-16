@@ -29,7 +29,7 @@ import { z } from "zod";
 import { Plus, DollarSign, Edit, Trash2, Calculator } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PrecoKwh } from "@shared/schema";
-import { parseToNumber } from "@/lib/utils";
+import { parseToNumber, normalizeMonth } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 const precoFormSchema = z.object({
@@ -149,6 +149,7 @@ export default function PrecosKwhPage() {
   const handleSubmit = (data: PrecoFormData) => {
     const formattedData = {
       ...data,
+      mesReferencia: normalizeMonth(data.mesReferencia), // Normalizar para MAIÚSCULO
       tusd: parseToNumber(data.tusd).toFixed(6),
       te: parseToNumber(data.te).toFixed(6),
       icms: parseToNumber(data.icms).toFixed(2),

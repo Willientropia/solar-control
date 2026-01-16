@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
-import { cn, parseToNumber, formatNumber } from "@/lib/utils";
+import { cn, parseToNumber, formatNumber, normalizeMonth } from "@/lib/utils";
 
 interface ExtractedData {
   success: boolean;
@@ -380,6 +380,9 @@ export default function FaturasUploadPage() {
             // Aplicar precisão adequada: 6 decimais para preços, 2 para valores monetários
             normalizedData[key] = priceFields.includes(key) ? num.toFixed(6) : num.toFixed(2);
           }
+        } else if (key === "mesReferencia") {
+          // Normalizar mês para MAIÚSCULO (JAN/2026, DEZ/2025)
+          normalizedData[key] = normalizeMonth(value);
         } else {
           normalizedData[key] = value;
         }
