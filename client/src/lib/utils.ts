@@ -65,6 +65,15 @@ export function parseToNumber(value: string | number): number {
 
 export function getCurrentMonthRef(): string {
   const now = new Date();
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
   return `${months[now.getMonth()]}/${now.getFullYear()}`;
+}
+
+/**
+ * Normaliza o formato do mês para MAIÚSCULO (JAN/2026, DEZ/2025)
+ * Garante consistência em todo o sistema
+ */
+export function normalizeMonth(month: string): string {
+  if (!month) return "";
+  return month.toUpperCase();
 }
