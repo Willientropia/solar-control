@@ -30,6 +30,7 @@ import { Plus, DollarSign, Edit, Trash2, Calculator } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PrecoKwh } from "@shared/schema";
 import { parseToNumber } from "@/lib/utils";
+import { MonthPicker } from "@/components/month-picker";
 
 const precoFormSchema = z.object({
   mesReferencia: z.string().min(1, "Mês de referência é obrigatório"),
@@ -322,14 +323,15 @@ export default function PrecosKwhPage() {
                       <FormItem>
                         <FormLabel>Mês de Referência</FormLabel>
                         <FormControl>
-                          <Input
-                            placeholder="Ex: Jan/2026"
-                            {...field}
+                          <MonthPicker
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Selecione o mês"
                             disabled={!!editingPreco}
                           />
                         </FormControl>
                         <FormDescription>
-                          Formato: Jan/2026, Fev/2026, etc.
+                          Selecione o mês e ano para este preço
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
