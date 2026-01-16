@@ -177,6 +177,30 @@ export const insertGeracaoMensalSchema = createInsertSchema(geracaoMensal).omit(
 export type InsertGeracaoMensal = z.infer<typeof insertGeracaoMensalSchema>;
 export type GeracaoMensal = typeof geracaoMensal.$inferSelect;
 
+// ============ PREÇOS KWH (kWh Price Calculations) ============
+export const precosKwh = pgTable("precos_kwh", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mesReferencia: text("mes_referencia").notNull().unique(), // Ex: "Jan/2026"
+  tusd: decimal("tusd", { precision: 10, scale: 6 }).notNull(), // TUSD
+  te: decimal("te", { precision: 10, scale: 6 }).notNull(), // TE (Tarifa de Energia)
+  icms: decimal("icms", { precision: 5, scale: 2 }).notNull(), // ICMS (%)
+  pis: decimal("pis", { precision: 5, scale: 2 }).notNull(), // PIS (%)
+  cofins: decimal("cofins", { precision: 5, scale: 2 }).notNull(), // COFINS (%)
+  precoKwhCalculado: decimal("preco_kwh_calculado", { precision: 10, scale: 6 }).notNull(), // Resultado do cálculo
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPrecoKwhSchema = createInsertSchema(precosKwh).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  precoKwhCalculado: true, // Será calculado automaticamente
+});
+
+export type InsertPrecoKwh = z.infer<typeof insertPrecoKwhSchema>;
+export type PrecoKwh = typeof precosKwh.$inferSelect;
+
 // ============ LOGS DE AUDITORIA (Audit Logs) ============
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
