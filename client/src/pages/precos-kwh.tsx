@@ -492,6 +492,7 @@ export default function PrecosKwhPage() {
             data={precos}
             isLoading={isLoading}
             emptyMessage="Nenhum preço cadastrado"
+            getRowKey={(preco) => preco.id}
           />
         </CardContent>
       </Card>
