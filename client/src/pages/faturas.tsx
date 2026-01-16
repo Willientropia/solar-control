@@ -38,6 +38,7 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
 import { formatCurrency, parseToNumber, formatNumber } from "@/lib/utils";
+import { MonthPicker } from "@/components/month-picker";
 
 interface FaturaWithCliente extends Fatura {
   cliente?: Cliente;
@@ -304,19 +305,31 @@ export default function FaturasNewPage() {
           <div className="flex flex-col md:flex-row items-center gap-4">
             <div className="flex items-center gap-2 w-full md:w-auto">
               <span className="text-sm font-medium whitespace-nowrap">Mês:</span>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="w-[140px] bg-background">
-                  <SelectValue placeholder="Mês" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {getRecentMonths().map((month) => (
-                    <SelectItem key={month} value={month}>
-                      {month}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                {selectedMonth === "all" ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedMonth(getCurrentMonthRef())}
+                  >
+                    Selecionar mês
+                  </Button>
+                ) : (
+                  <MonthPicker
+                    value={selectedMonth}
+                    onChange={setSelectedMonth}
+                    placeholder="Selecione o mês"
+                  />
+                )}
+                {selectedMonth !== "all" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedMonth("all")}
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto">

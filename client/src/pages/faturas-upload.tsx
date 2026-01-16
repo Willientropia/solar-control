@@ -258,7 +258,11 @@ export default function FaturasUploadPage() {
       let fetchedPrecoKwh = precoKwh;
       if (data.mesReferencia) {
         try {
-          const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${data.mesReferencia}`);
+          // Codificar o mês para URL (DEZ/2025 -> DEZ%2F2025)
+          const mesEncoded = encodeURIComponent(data.mesReferencia);
+          console.log("Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
+
+          const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
           if (precoResponse.precoKwhCalculado) {
             // Garantir que o valor mantém todos os decimais
             fetchedPrecoKwh = precoResponse.precoKwhCalculado;
@@ -273,7 +277,7 @@ export default function FaturasUploadPage() {
             });
           }
         } catch (error) {
-          console.log("Preço não encontrado para o mês, usando valor padrão");
+          console.log("Preço não encontrado para o mês:", data.mesReferencia, error);
         }
       }
 

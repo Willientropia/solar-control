@@ -28,7 +28,7 @@ import {
   Zap,
   Users,
 } from "lucide-react";
-import { MonthYearPicker } from "@/components/ui/month-year-picker";
+import { MonthPicker } from "@/components/month-picker";
 import type { Usina } from "@shared/schema";
 import { formatNumber, formatCurrency, getCurrentMonthRef } from "@/lib/utils";
 
@@ -115,10 +115,10 @@ export default function RelatoriosPage() {
 
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Período:</span>
-          <MonthYearPicker
+          <MonthPicker
             value={selectedPeriodo}
             onChange={setSelectedPeriodo}
-            className="w-auto"
+            placeholder="Selecione o mês"
           />
         </div>
       </div>
