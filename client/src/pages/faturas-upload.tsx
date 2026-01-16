@@ -260,13 +260,16 @@ export default function FaturasUploadPage() {
         try {
           const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${data.mesReferencia}`);
           if (precoResponse.precoKwhCalculado) {
-            fetchedPrecoKwh = String(precoResponse.precoKwhCalculado);
+            // Garantir que o valor mantém todos os decimais
+            fetchedPrecoKwh = precoResponse.precoKwhCalculado;
+            console.log("Preço buscado do banco:", fetchedPrecoKwh, "tipo:", typeof fetchedPrecoKwh);
+
             // Atualizar o estado global do preço
             setPrecoKwh(fetchedPrecoKwh);
 
             toast({
               title: "Preço detectado automaticamente",
-              description: `Preço de R$ ${parseFloat(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
+              description: `Preço de R$ ${Number(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
             });
           }
         } catch (error) {
@@ -304,6 +307,7 @@ export default function FaturasUploadPage() {
 
       // Atualizar formData com valores recalculados
       initialFormData["precoKwhUsado"] = fetchedPrecoKwh;
+      console.log("Preço kWh armazenado no formData:", initialFormData["precoKwhUsado"]);
       initialFormData["fioB"] = formatNumber(fioBValor);
       initialFormData["valorSemDesconto"] = formatNumber(valorSemDesconto);
       initialFormData["valorComDesconto"] = formatNumber(valorComDesconto);
