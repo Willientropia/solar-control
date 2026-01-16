@@ -19,6 +19,7 @@ import ClienteDetalhesPage from "@/pages/cliente-detalhes";
 import FaturasPage from "@/pages/faturas";
 import FaturasUploadPage from "@/pages/faturas-upload";
 import GeracaoPage from "@/pages/geracao";
+import PrecosKwhPage from "@/pages/precos-kwh";
 import RelatoriosPage from "@/pages/relatorios";
 import AuditoriaPage from "@/pages/auditoria";
 import ConfiguracoesPage from "@/pages/configuracoes";
@@ -127,6 +128,9 @@ function Router() {
       </Route>
       <Route path="/geracao">
         <ProtectedRoute component={GeracaoPage} />
+      </Route>
+      <Route path="/precos-kwh">
+        <ProtectedRoute component={PrecosKwhPage} />
       </Route>
       <Route path="/relatorios">
         <ProtectedRoute component={RelatoriosPage} adminOnly />

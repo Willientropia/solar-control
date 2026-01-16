@@ -3,6 +3,7 @@ import {
   clientes,
   faturas,
   geracaoMensal,
+  precosKwh,
   auditLogs,
   userProfiles,
   type Usina,
@@ -13,6 +14,8 @@ import {
   type InsertFatura,
   type GeracaoMensal,
   type InsertGeracaoMensal,
+  type PrecoKwh,
+  type InsertPrecoKwh,
   type AuditLog,
   type InsertAuditLog,
   type UserProfile,
@@ -287,6 +290,76 @@ export class DatabaseStorage implements IStorage {
   async deleteGeracao(id: string): Promise<boolean> {
     await db.delete(geracaoMensal).where(eq(geracaoMensal.id, id));
     return true;
+  }
+
+  // ==================== PREÇOS KWH ====================
+  async getPrecosKwh(): Promise<PrecoKwh[]> {
+    return db.select().from(precosKwh).orderBy(desc(precosKwh.mesReferencia));
+  }
+
+  async getPrecoKwh(id: string): Promise<PrecoKwh | undefined> {
+    const [preco] = await db.select().from(precosKwh).where(eq(precosKwh.id, id));
+    return preco;
+  }
+
+  async getPrecoKwhByMes(mesReferencia: string): Promise<PrecoKwh | undefined> {
+    const [preco] = await db.select().from(precosKwh).where(eq(precosKwh.mesReferencia, mesReferencia));
+    return preco;
+  }
+
+  async createPrecoKwh(data: InsertPrecoKwh): Promise<PrecoKwh> {
+    // Calcular preço do kWh usando a fórmula: {(TE+TUSD)/((1-ICMS)*(1-(PIS+COFINS)))}/1000
+    const tusd = parseFloat(data.tusd);
+    const te = parseFloat(data.te);
+    const icms = parseFloat(data.icms) / 100; // Converter % para decimal
+    const pis = parseFloat(data.pis) / 100;
+    const cofins = parseFloat(data.cofins) / 100;
+
+    const precoKwhCalculado = ((te + tusd) / ((1 - icms) * (1 - (pis + cofins)))) / 1000;
+
+    const [preco] = await db
+      .insert(precosKwh)
+      .values({ ...data, precoKwhCalculado: precoKwhCalculado.toFixed(6) })
+      .returning();
+    return preco;
+  }
+
+  async updatePrecoKwh(id: string, data: Partial<InsertPrecoKwh>): Promise<PrecoKwh | undefined> {
+    // Recalcular preço se qualquer um dos valores mudar
+    let precoKwhCalculado: string | undefined;
+
+    // Buscar valores atuais se necessário para o cálculo
+    const current = await this.getPrecoKwh(id);
+    if (!current) return undefined;
+
+    const tusd = data.tusd !== undefined ? parseFloat(data.tusd) : parseFloat(current.tusd);
+    const te = data.te !== undefined ? parseFloat(data.te) : parseFloat(current.te);
+    const icms = data.icms !== undefined ? parseFloat(data.icms) / 100 : parseFloat(current.icms) / 100;
+    const pis = data.pis !== undefined ? parseFloat(data.pis) / 100 : parseFloat(current.pis) / 100;
+    const cofins = data.cofins !== undefined ? parseFloat(data.cofins) / 100 : parseFloat(current.cofins) / 100;
+
+    precoKwhCalculado = (((te + tusd) / ((1 - icms) * (1 - (pis + cofins)))) / 1000).toFixed(6);
+
+    const [preco] = await db
+      .update(precosKwh)
+      .set({ ...data, precoKwhCalculado })
+      .where(eq(precosKwh.id, id))
+      .returning();
+    return preco;
+  }
+
+  async deletePrecoKwh(id: string): Promise<boolean> {
+    await db.delete(precosKwh).where(eq(precosKwh.id, id));
+    return true;
+  }
+
+  async getUltimoPrecoKwh(): Promise<PrecoKwh | undefined> {
+    const [preco] = await db
+      .select()
+      .from(precosKwh)
+      .orderBy(desc(precosKwh.createdAt))
+      .limit(1);
+    return preco;
   }
 
   // ==================== AUDIT LOGS ====================

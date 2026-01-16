@@ -233,6 +233,95 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ==================== PREÇOS KWH ====================
+  app.get("/api/precos-kwh", isAuthenticated, async (req, res) => {
+    try {
+      const precos = await storage.getPrecosKwh();
+      res.json(precos);
+    } catch (error) {
+      console.error("Error fetching preços kWh:", error);
+      res.status(500).json({ message: "Failed to fetch preços kWh" });
+    }
+  });
+
+  // Rotas específicas devem vir ANTES das rotas com :id
+  app.get("/api/precos-kwh/ultimo", isAuthenticated, async (req, res) => {
+    try {
+      const preco = await storage.getUltimoPrecoKwh();
+      res.json(preco || null);
+    } catch (error) {
+      console.error("Error fetching último preço kWh:", error);
+      res.status(500).json({ message: "Failed to fetch último preço kWh" });
+    }
+  });
+
+  app.get("/api/precos-kwh/mes/:mesReferencia", isAuthenticated, async (req, res) => {
+    try {
+      const preco = await storage.getPrecoKwhByMes(req.params.mesReferencia);
+      if (!preco) {
+        return res.status(404).json({ message: "Preço kWh not found for this month" });
+      }
+      res.json(preco);
+    } catch (error) {
+      console.error("Error fetching preço kWh by month:", error);
+      res.status(500).json({ message: "Failed to fetch preço kWh" });
+    }
+  });
+
+  app.get("/api/precos-kwh/:id", isAuthenticated, async (req, res) => {
+    try {
+      const preco = await storage.getPrecoKwh(req.params.id);
+      if (!preco) {
+        return res.status(404).json({ message: "Preço kWh not found" });
+      }
+      res.json(preco);
+    } catch (error) {
+      console.error("Error fetching preço kWh:", error);
+      res.status(500).json({ message: "Failed to fetch preço kWh" });
+    }
+  });
+
+  app.post("/api/precos-kwh", isAuthenticated, async (req: any, res) => {
+    try {
+      const preco = await storage.createPrecoKwh(req.body);
+      await logAction(req.user.claims.sub, "criar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
+      res.status(201).json(preco);
+    } catch (error: any) {
+      console.error("Error creating preço kWh:", error);
+      if (error.code === '23505') { // Unique constraint violation
+        res.status(400).json({ message: "Já existe um preço cadastrado para este mês" });
+      } else {
+        res.status(500).json({ message: "Failed to create preço kWh" });
+      }
+    }
+  });
+
+  app.patch("/api/precos-kwh/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const preco = await storage.updatePrecoKwh(req.params.id, req.body);
+      if (!preco) {
+        return res.status(404).json({ message: "Preço kWh not found" });
+      }
+      await logAction(req.user.claims.sub, "editar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
+      res.json(preco);
+    } catch (error) {
+      console.error("Error updating preço kWh:", error);
+      res.status(500).json({ message: "Failed to update preço kWh" });
+    }
+  });
+
+  app.delete("/api/precos-kwh/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const preco = await storage.getPrecoKwh(req.params.id);
+      await storage.deletePrecoKwh(req.params.id);
+      await logAction(req.user.claims.sub, "excluir", "preco_kwh", req.params.id, { mesReferencia: preco?.mesReferencia });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting preço kWh:", error);
+      res.status(500).json({ message: "Failed to delete preço kWh" });
+    }
+  });
+
   // ==================== CLIENTES ====================
   app.get("/api/clientes", isAuthenticated, async (req, res) => {
     try {
