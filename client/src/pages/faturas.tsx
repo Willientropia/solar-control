@@ -85,18 +85,14 @@ export default function FaturasNewPage() {
     queryKey: ["/api/clientes"],
   });
 
-  const { data: allFaturas = [], isLoading, refetch } = useQuery<FaturaWithCliente[]>({
+  // O backend já faz o filtro por mês e usina, então não precisamos filtrar novamente no frontend
+  const { data: faturas = [], isLoading, refetch } = useQuery<FaturaWithCliente[]>({
     queryKey: ["/api/faturas", selectedUsinaId, selectedMonth],
     queryFn: () => {
       const url = `/api/faturas?usinaId=${selectedUsinaId !== "all" ? selectedUsinaId : ""}&mesReferencia=${selectedMonth !== "all" ? selectedMonth : ""}`;
       return apiRequest("GET", url).then(r => r.json());
     }
   });
-
-  // Filter faturas by selected month if not "all"
-  const faturas = selectedMonth === "all"
-    ? allFaturas
-    : allFaturas.filter(f => f.mesReferencia === selectedMonth);
 
   const editFaturaMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Record<string, any> }) => {
