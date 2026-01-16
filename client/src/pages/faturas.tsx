@@ -72,7 +72,7 @@ function getRecentMonths(count = 12): string[] {
 export default function FaturasNewPage() {
   const { toast } = useToast();
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthRef());
+  const [selectedMonth, setSelectedMonth] = useState<string>("all"); // Mostrar todas as faturas por padrão
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
   const [editingFatura, setEditingFatura] = useState<FaturaWithCliente | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
