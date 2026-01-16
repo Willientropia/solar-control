@@ -20,6 +20,7 @@ import {
   Users,
   FileText,
   Zap,
+  DollarSign,
   BarChart3,
   ClipboardList,
   Settings,
@@ -38,6 +39,7 @@ const operadorItems = [
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Faturas", url: "/faturas", icon: FileText },
   { title: "Geração Mensal", url: "/geracao", icon: Zap },
+  { title: "Preços kWh", url: "/precos-kwh", icon: DollarSign },
 ];
 
 const adminItems = [

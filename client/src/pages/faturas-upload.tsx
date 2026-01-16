@@ -219,7 +219,7 @@ export default function FaturasUploadPage() {
     mutationFn: async (file: File) => {
       const formDataToSend = new FormData();
       formDataToSend.append("file", file);
-      formDataToSend.append("precoKwh", precoKwh);
+      formDataToSend.append("precoKwh", precoKwh || "0");
       formDataToSend.append("desconto", selectedUsina?.descontoPadrao || "25");
 
       const response = await fetch("/api/faturas/extract", {
@@ -236,18 +236,12 @@ export default function FaturasUploadPage() {
       const data = await response.json();
       return { file, data };
     },
-    onSuccess: ({ file, data }: { file: File; data: ExtractedData }) => {
+    onSuccess: async ({ file, data }: { file: File; data: ExtractedData }) => {
       const initialFormData: Record<string, string> = {};
       FIELD_CONFIG.forEach(({ key }) => {
         const value = data[key];
         initialFormData[key] = value !== null && value !== undefined ? String(value) : "";
       });
-      // Garantir que o preço do kWh usado na extração siga para a confirmação
-      initialFormData["precoKwhUsado"] = String(
-        data.precoKwhUsado !== undefined && data.precoKwhUsado !== null
-          ? data.precoKwhUsado
-          : precoKwh
-      );
 
       // Buscar cliente pela UC em TODOS os clientes (não apenas os filtrados)
       const matchedCliente = clientes.find(
@@ -258,6 +252,62 @@ export default function FaturasUploadPage() {
       if (matchedCliente && !selectedUsinaId) {
         setSelectedUsinaId(matchedCliente.usinaId);
       }
+
+      // Tentar buscar o preço do kWh automaticamente pelo mês de referência
+      let fetchedPrecoKwh = precoKwh;
+      if (data.mesReferencia) {
+        try {
+          const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${data.mesReferencia}`);
+          if (precoResponse.precoKwhCalculado) {
+            fetchedPrecoKwh = String(precoResponse.precoKwhCalculado);
+            // Atualizar o estado global do preço
+            setPrecoKwh(fetchedPrecoKwh);
+
+            toast({
+              title: "Preço detectado automaticamente",
+              description: `Preço de R$ ${parseFloat(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
+            });
+          }
+        } catch (error) {
+          console.log("Preço não encontrado para o mês, usando valor padrão");
+        }
+      }
+
+      // Recalcular valores com o preço correto
+      const consumoScee = parseToNumber(initialFormData.consumoScee || "0");
+      const precoKwhNum = parseFloat(fetchedPrecoKwh || "0");
+      const valorTotal = parseToNumber(initialFormData.valorTotal || "0");
+      const precoFioBNum = parseToNumber(initialFormData.precoFioB || "0");
+      const desconto = parseFloat(matchedCliente?.desconto || selectedUsina?.descontoPadrao || "25");
+
+      // Calculate Fio B
+      const fioBValor = consumoScee * precoFioBNum;
+
+      // Calculate valorSemDesconto
+      const valorSemDesconto = (consumoScee * precoKwhNum) + valorTotal - fioBValor;
+
+      let valorComDesconto: number;
+      let economia: number;
+      let lucro: number;
+
+      if (matchedCliente && !matchedCliente.isPagante) {
+        valorComDesconto = 0;
+        economia = 0;
+        lucro = -valorTotal;
+      } else {
+        const discountMultiplier = 1 - (desconto / 100);
+        valorComDesconto = ((consumoScee * precoKwhNum) * discountMultiplier) + valorTotal - fioBValor;
+        economia = valorSemDesconto - valorComDesconto;
+        lucro = valorComDesconto - valorTotal;
+      }
+
+      // Atualizar formData com valores recalculados
+      initialFormData["precoKwhUsado"] = fetchedPrecoKwh;
+      initialFormData["fioB"] = formatNumber(fioBValor);
+      initialFormData["valorSemDesconto"] = formatNumber(valorSemDesconto);
+      initialFormData["valorComDesconto"] = formatNumber(valorComDesconto);
+      initialFormData["economia"] = formatNumber(economia);
+      initialFormData["lucro"] = formatNumber(lucro);
 
       // Add to pending faturas
       setPendingFaturas((prev) => {
@@ -435,15 +485,6 @@ export default function FaturasUploadPage() {
       toast({
         title: "Selecione um arquivo",
         description: "Adicione pelo menos um arquivo PDF para continuar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!selectedUsinaId) {
-      toast({
-        title: "Selecione a usina",
-        description: "Escolha uma usina antes de fazer o upload.",
         variant: "destructive",
       });
       return;
@@ -893,17 +934,17 @@ export default function FaturasUploadPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Preço do kWh (R$)</Label>
+                <Label>Preço do kWh (R$) - Opcional</Label>
                 <Input
                   type="number"
                   step="0.000001"
-                  placeholder="Ex: 0.85"
+                  placeholder="Auto-detectado pelo mês"
                   value={precoKwh}
                   onChange={(e) => setPrecoKwh(e.target.value)}
                   data-testid="input-preco-kwh"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Preço do kWh no mercado cativo para cálculos.
+                  Será detectado automaticamente após a extração baseado no mês da fatura.
                 </p>
               </div>
 
