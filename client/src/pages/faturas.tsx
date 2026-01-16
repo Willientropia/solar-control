@@ -72,7 +72,7 @@ function getRecentMonths(count = 12): string[] {
 export default function FaturasNewPage() {
   const { toast } = useToast();
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthRef());
+  const [selectedMonth, setSelectedMonth] = useState<string>("all"); // Mostrar todas as faturas por padrão
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
   const [editingFatura, setEditingFatura] = useState<FaturaWithCliente | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
@@ -87,13 +87,28 @@ export default function FaturasNewPage() {
 
   const { data: allFaturas = [], isLoading, refetch } = useQuery<FaturaWithCliente[]>({
     queryKey: ["/api/faturas", selectedUsinaId, selectedMonth],
-    queryFn: () => apiRequest("GET", `/api/faturas?usinaId=${selectedUsinaId !== "all" ? selectedUsinaId : ""}&mesReferencia=${selectedMonth !== "all" ? selectedMonth : ""}`).then(r => r.json())
+    queryFn: () => {
+      const url = `/api/faturas?usinaId=${selectedUsinaId !== "all" ? selectedUsinaId : ""}&mesReferencia=${selectedMonth !== "all" ? selectedMonth : ""}`;
+      console.log("🔍 DEBUG - URL da API:", url);
+      console.log("🔍 DEBUG - Mês selecionado:", selectedMonth);
+      return apiRequest("GET", url).then(r => r.json());
+    }
   });
 
   // Filter faturas by selected month if not "all"
   const faturas = selectedMonth === "all"
     ? allFaturas
-    : allFaturas.filter(f => f.mesReferencia === selectedMonth);
+    : allFaturas.filter(f => {
+        console.log("🔍 DEBUG - Comparando:", {
+          faturaMonth: f.mesReferencia,
+          selectedMonth,
+          match: f.mesReferencia === selectedMonth
+        });
+        return f.mesReferencia === selectedMonth;
+      });
+
+  console.log("🔍 DEBUG - Total faturas da API:", allFaturas.length);
+  console.log("🔍 DEBUG - Faturas após filtro:", faturas.length);
 
   const editFaturaMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Record<string, any> }) => {
