@@ -296,7 +296,13 @@ export default function ClientesPage() {
         title="Clientes"
         description="Gerencie os clientes das suas usinas de energia solar"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            if (open) {
+              setIsDialogOpen(true);
+            } else {
+              handleCloseDialog();
+            }
+          }}>
             <DialogTrigger asChild>
               <Button data-testid="button-new-cliente">
                 <Plus className="h-4 w-4 mr-2" />
@@ -558,7 +564,13 @@ export default function ClientesPage() {
       />
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
+        if (open) {
+          setDeleteDialogOpen(true);
+        } else {
+          handleCloseDeleteDialog();
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar Exclusão</DialogTitle>
