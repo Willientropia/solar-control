@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
-import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef } from "@/lib/utils";
+import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface FaturaWithCliente extends Fatura {
@@ -156,7 +156,7 @@ export default function FaturasNewPage() {
     if (!editingFatura) return;
 
     const updates = {
-      mesReferencia: editFormData.mesReferencia,
+      mesReferencia: normalizeMonth(editFormData.mesReferencia), // Normalizar para MAIÚSCULO
       dataVencimento: editFormData.dataVencimento,
       consumoScee: editFormData.consumoScee,
       consumoNaoCompensado: editFormData.consumoNaoCompensado,
@@ -526,9 +526,10 @@ export default function FaturasNewPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Mês de Referência</Label>
-                    <Input
+                    <MonthPicker
                       value={editFormData.mesReferencia || ""}
-                      onChange={(e) => updateEditFormField("mesReferencia", e.target.value)}
+                      onChange={(value) => updateEditFormField("mesReferencia", value)}
+                      placeholder="Selecione o mês"
                     />
                   </div>
                   <div>
