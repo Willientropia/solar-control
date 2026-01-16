@@ -29,7 +29,7 @@ import { z } from "zod";
 import { Plus, DollarSign, Edit, Trash2, Calculator } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PrecoKwh } from "@shared/schema";
-import { formatNumber, parseToNumber } from "@/lib/utils";
+import { parseToNumber } from "@/lib/utils";
 
 const precoFormSchema = z.object({
   mesReferencia: z.string().min(1, "Mês de referência é obrigatório"),
@@ -166,11 +166,11 @@ export default function PrecosKwhPage() {
     setEditingPreco(preco);
     form.reset({
       mesReferencia: preco.mesReferencia,
-      tusd: formatNumber(preco.tusd),
-      te: formatNumber(preco.te),
-      icms: formatNumber(preco.icms),
-      pis: formatNumber(preco.pis),
-      cofins: formatNumber(preco.cofins),
+      tusd: String(preco.tusd),
+      te: String(preco.te),
+      icms: String(preco.icms),
+      pis: String(preco.pis),
+      cofins: String(preco.cofins),
     });
     setIsDialogOpen(true);
   };
@@ -182,11 +182,11 @@ export default function PrecosKwhPage() {
     if (ultimoPreco) {
       form.reset({
         mesReferencia: "",
-        tusd: formatNumber(ultimoPreco.tusd),
-        te: formatNumber(ultimoPreco.te),
-        icms: formatNumber(ultimoPreco.icms),
-        pis: formatNumber(ultimoPreco.pis),
-        cofins: formatNumber(ultimoPreco.cofins),
+        tusd: String(ultimoPreco.tusd),
+        te: String(ultimoPreco.te),
+        icms: String(ultimoPreco.icms),
+        pis: String(ultimoPreco.pis),
+        cofins: String(ultimoPreco.cofins),
       });
     } else {
       form.reset({
