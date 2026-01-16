@@ -1,5 +1,9 @@
 # Como Aplicar a Migração de Normalização de Mês
 
+## ⚠️ ATUALIZAÇÃO: Use a migração 0005
+
+**Use o arquivo:** `0005_normalize_existing_months.sql` (mais recente)
+
 ## Problema
 O banco de dados tem meses em formatos mistos:
 - `Jan/2026` (primeira letra maiúscula)
@@ -43,8 +47,13 @@ exit
 4. Cole o conteúdo do arquivo `0004_normalize_month_format.sql`
 5. Clique em Execute/Run (F5)
 
-## Opção 3: Comando Direto (Uma Linha)
+## Opção 3: Comando Direto (Uma Linha) ⭐ MAIS FÁCIL
 
+```bash
+docker-compose exec -T db psql -U postgres -d postgres < migrations/0005_normalize_existing_months.sql
+```
+
+Ou usando o arquivo antigo:
 ```bash
 docker-compose exec -T db psql -U postgres -d postgres < migrations/0004_normalize_month_format.sql
 ```
