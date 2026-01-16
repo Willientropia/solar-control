@@ -188,16 +188,10 @@ export class DatabaseStorage implements IStorage {
       .filter((row) => {
         const statusMatch = !status || row.faturas.status === status;
         const usinaMatch = !usinaId || row.faturas.usinaId === usinaId || row.clientes?.usinaId === usinaId;
-        const mesMatch = !mesReferencia || row.faturas.mesReferencia === mesReferencia;
 
-        // Log apenas se estiver filtrando por mês e não der match (para debug)
-        if (mesReferencia && !mesMatch) {
-          console.log("🔍 DEBUG - Não deu match:", {
-            faturaMes: row.faturas.mesReferencia,
-            filtroMes: mesReferencia,
-            igual: row.faturas.mesReferencia === mesReferencia
-          });
-        }
+        // Comparação case-insensitive para mesReferencia (JAN/2026 === Jan/2026 === jan/2026)
+        const mesMatch = !mesReferencia ||
+          row.faturas.mesReferencia?.toUpperCase() === mesReferencia.toUpperCase();
 
         return statusMatch && usinaMatch && mesMatch;
       })
