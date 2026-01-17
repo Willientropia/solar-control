@@ -260,13 +260,15 @@ export default function FaturasUploadPage() {
         try {
           // Codificar o mês para URL (DEZ/2025 -> DEZ%2F2025)
           const mesEncoded = encodeURIComponent(data.mesReferencia);
-          console.log("Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
+          console.log("🔍 [UPLOAD] Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
 
           const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
+          console.log("📦 [UPLOAD] Resposta da API de preço:", precoResponse);
+
           if (precoResponse.precoKwhCalculado) {
             // Garantir que o valor mantém todos os decimais
             fetchedPrecoKwh = precoResponse.precoKwhCalculado;
-            console.log("Preço buscado do banco:", fetchedPrecoKwh, "tipo:", typeof fetchedPrecoKwh);
+            console.log("✅ [UPLOAD] Preço buscado do banco:", fetchedPrecoKwh, "tipo:", typeof fetchedPrecoKwh);
 
             // Atualizar o estado global do preço
             setPrecoKwh(fetchedPrecoKwh);
@@ -275,10 +277,14 @@ export default function FaturasUploadPage() {
               title: "Preço detectado automaticamente",
               description: `Preço de R$ ${Number(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
             });
+          } else {
+            console.warn("⚠️ [UPLOAD] API retornou resposta mas sem precoKwhCalculado:", precoResponse);
           }
         } catch (error) {
-          console.log("Preço não encontrado para o mês:", data.mesReferencia, error);
+          console.error("❌ [UPLOAD] Erro ao buscar preço para o mês:", data.mesReferencia, error);
         }
+      } else {
+        console.warn("⚠️ [UPLOAD] Mês de referência não detectado na fatura");
       }
 
       // Recalcular valores com o preço correto
@@ -288,11 +294,22 @@ export default function FaturasUploadPage() {
       const precoFioBNum = parseToNumber(initialFormData.precoFioB || "0");
       const desconto = parseFloat(matchedCliente?.desconto || selectedUsina?.descontoPadrao || "25");
 
+      console.log("💰 [UPLOAD - CÁLCULOS INICIAIS]");
+      console.log("  Cliente:", matchedCliente?.nome || "NÃO ENCONTRADO");
+      console.log("  isPagante:", matchedCliente?.isPagante);
+      console.log("  Consumo SCEE:", consumoScee);
+      console.log("  Preço kWh usado:", precoKwhNum, "(fetchedPrecoKwh:", fetchedPrecoKwh, ")");
+      console.log("  Valor Total da fatura:", valorTotal);
+      console.log("  Preço Fio B:", precoFioBNum);
+      console.log("  Desconto:", desconto, "%");
+
       // Calculate Fio B
       const fioBValor = consumoScee * precoFioBNum;
+      console.log("  → Fio B calculado:", fioBValor, "=", consumoScee, "×", precoFioBNum);
 
       // Calculate valorSemDesconto
       const valorSemDesconto = (consumoScee * precoKwhNum) + valorTotal - fioBValor;
+      console.log("  → Valor Sem Desconto:", valorSemDesconto, "= (", consumoScee, "×", precoKwhNum, ") +", valorTotal, "-", fioBValor);
 
       let valorComDesconto: number;
       let economia: number;
@@ -302,21 +319,35 @@ export default function FaturasUploadPage() {
         valorComDesconto = 0;
         economia = 0;
         lucro = -valorTotal;
+        console.log("  → Cliente NÃO PAGANTE: valorComDesconto=0, economia=0, lucro=-", valorTotal);
       } else {
         const discountMultiplier = 1 - (desconto / 100);
         valorComDesconto = ((consumoScee * precoKwhNum) * discountMultiplier) + valorTotal - fioBValor;
         economia = valorSemDesconto - valorComDesconto;
         lucro = valorComDesconto - valorTotal;
+        console.log("  → Cliente PAGANTE:");
+        console.log("    Multiplicador desconto:", discountMultiplier, "= 1 - (", desconto, "/ 100)");
+        console.log("    Valor Com Desconto:", valorComDesconto);
+        console.log("    Economia:", economia);
+        console.log("    Lucro:", lucro);
       }
 
       // Atualizar formData com valores recalculados
       initialFormData["precoKwhUsado"] = fetchedPrecoKwh;
-      console.log("Preço kWh armazenado no formData:", initialFormData["precoKwhUsado"]);
+      console.log("💾 [UPLOAD] Preço kWh armazenado no formData:", initialFormData["precoKwhUsado"]);
       initialFormData["fioB"] = formatNumber(fioBValor);
       initialFormData["valorSemDesconto"] = formatNumber(valorSemDesconto);
       initialFormData["valorComDesconto"] = formatNumber(valorComDesconto);
       initialFormData["economia"] = formatNumber(economia);
       initialFormData["lucro"] = formatNumber(lucro);
+      console.log("✅ [UPLOAD] FormData final:", {
+        precoKwhUsado: initialFormData["precoKwhUsado"],
+        fioB: initialFormData["fioB"],
+        valorSemDesconto: initialFormData["valorSemDesconto"],
+        valorComDesconto: initialFormData["valorComDesconto"],
+        economia: initialFormData["economia"],
+        lucro: initialFormData["lucro"]
+      });
 
       // Add to pending faturas
       setPendingFaturas((prev) => {
@@ -544,17 +575,24 @@ export default function FaturasUploadPage() {
     const valorTotal = parseToNumber(currentFormData.valorTotal || "0");
     const precoFioB = parseToNumber(currentFormData.precoFioB || "0");
 
-    console.log("=== RECÁLCULO ===");
-    console.log("Consumo SCEE:", consumoScee);
-    console.log("Preço kWh:", precoKwhUsado);
-    console.log("Valor Total:", valorTotal);
-    console.log("Preço Fio B:", precoFioB);
+    console.log("🔄 [RECALCULAR] ===================");
+    console.log("  Cliente:", selectedCliente.nome);
+    console.log("  isPagante:", selectedCliente.isPagante);
+    console.log("  Desconto do cliente:", selectedCliente.desconto, "%");
+    console.log("  Consumo SCEE:", consumoScee);
+    console.log("  Preço kWh do formData:", currentFormData.precoKwhUsado);
+    console.log("  Preço kWh parseado:", precoKwhUsado);
+    console.log("  Preço kWh do estado global:", precoKwh);
+    console.log("  Valor Total:", valorTotal);
+    console.log("  Preço Fio B:", precoFioB);
 
     // Calculate Fio B
     const fioBValor = consumoScee * precoFioB;
+    console.log("  → Fio B:", fioBValor, "=", consumoScee, "×", precoFioB);
 
     // Calculate valorSemDesconto
     const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
+    console.log("  → Valor Sem Desconto:", valorSemDesconto, "= (", consumoScee, "×", precoKwhUsado, ") +", valorTotal, "-", fioBValor);
 
     let valorComDesconto: number;
     let economia: number;
@@ -569,7 +607,7 @@ export default function FaturasUploadPage() {
       valorComDesconto = 0;
       economia = 0;
       lucro = -valorTotal;
-      console.log(`Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
+      console.log(`  → Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
     } else {
       // Cliente pagante - cálculo normal com desconto
       const clientDiscount = parseFloat(selectedCliente.desconto || "0");
@@ -577,15 +615,20 @@ export default function FaturasUploadPage() {
       valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
       economia = valorSemDesconto - valorComDesconto;
       lucro = valorComDesconto - valorTotal;
-      console.log(`Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+      console.log(`  → Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
+      console.log("    Multiplicador desconto:", discountMultiplier);
+      console.log("    Valor Com Desconto:", valorComDesconto);
+      console.log("    Economia:", economia);
+      console.log("    Lucro:", lucro);
     }
 
-    console.log("Fio B:", fioBValor);
-    console.log("Valor Sem Desconto:", valorSemDesconto);
-    console.log("Valor Com Desconto:", valorComDesconto);
-    console.log("Economia:", economia);
-    console.log("Lucro:", lucro);
-    console.log("================");
+    console.log("✅ [RECALCULAR] Resultados finais:");
+    console.log("  Fio B:", fioBValor);
+    console.log("  Valor Sem Desconto:", valorSemDesconto);
+    console.log("  Valor Com Desconto:", valorComDesconto);
+    console.log("  Economia:", economia);
+    console.log("  Lucro:", lucro);
+    console.log("==================================");
 
     // Update current fatura with recalculated values
     updateCurrentFatura({
@@ -608,7 +651,14 @@ export default function FaturasUploadPage() {
   // Auto-recalculate values when client is selected
   useEffect(() => {
     if (selectedClienteId && selectedCliente && formData.consumoScee) {
+      console.log("🔄 [AUTO-RECALCULAR] Cliente foi selecionado, disparando recálculo automático...");
       handleRecalculate();
+    } else {
+      console.log("⏸️ [AUTO-RECALCULAR] Condições não atendidas:", {
+        selectedClienteId,
+        selectedCliente: !!selectedCliente,
+        consumoScee: formData.consumoScee
+      });
     }
   }, [selectedClienteId, selectedCliente]);
 
@@ -1037,7 +1087,12 @@ export default function FaturasUploadPage() {
 
                 <TooltipProvider>
                   <div className="grid gap-3">
-                    {FIELD_CONFIG.map(({ key, label, readonly, formula }) => (
+                    {FIELD_CONFIG.map(({ key, label, readonly, formula }) => {
+                      // Log para debug do campo precoKwhUsado
+                      if (key === "precoKwhUsado") {
+                        console.log("🎨 [MODAL] Renderizando campo precoKwhUsado:", formData[key]);
+                      }
+                      return (
                       <div key={key} className="space-y-1">
                         <div className="flex items-center gap-1">
                           <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
@@ -1068,7 +1123,8 @@ export default function FaturasUploadPage() {
                           data-testid={`input-field-${key}`}
                         />
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </TooltipProvider>
               </div>
