@@ -103,71 +103,106 @@ interface PendingFatura {
   saved: boolean;
 }
 
+// Configuração de categorias de campos com cores
+const FIELD_CATEGORIES = [
+  {
+    name: "Informações Gerais",
+    color: "blue",
+    bgClass: "bg-blue-50 dark:bg-blue-950/30",
+    borderClass: "border-blue-200 dark:border-blue-800",
+    fields: [
+      { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" as const },
+      { key: "nomeCliente", label: "Nome do Cliente", type: "text" as const },
+      { key: "endereco", label: "Endereço", type: "text" as const },
+      { key: "unidadeConsumidora", label: "Unidade Consumidora", type: "text" as const },
+      { key: "mesReferencia", label: "Mês de Referência", type: "text" as const },
+      { key: "dataVencimento", label: "Data de Vencimento", type: "text" as const },
+      { key: "leituraAnterior", label: "Leitura Anterior", type: "text" as const },
+      { key: "leituraAtual", label: "Leitura Atual", type: "text" as const },
+      { key: "quantidadeDias", label: "Quantidade de Dias", type: "text" as const },
+    ]
+  },
+  {
+    name: "Consumo e Geração (kWh)",
+    color: "amber",
+    bgClass: "bg-amber-50 dark:bg-amber-950/30",
+    borderClass: "border-amber-200 dark:border-amber-800",
+    fields: [
+      { key: "consumoKwh", label: "Consumo Total (kWh)", type: "text" as const },
+      { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" as const },
+      { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" as const },
+      { key: "energiaInjetada", label: "Energia Injetada (kWh)", type: "text" as const },
+      { key: "saldoKwh", label: "Saldo (kWh)", type: "text" as const },
+      { key: "geracaoUltimoCiclo", label: "Geração Último Ciclo (kWh)", type: "text" as const },
+      { key: "cicloGeracao", label: "Ciclo de Geração", type: "text" as const },
+      { key: "ucGeradora", label: "UC Geradora", type: "text" as const },
+    ]
+  },
+  {
+    name: "Valores Monetários (R$)",
+    color: "green",
+    bgClass: "bg-green-50 dark:bg-green-950/30",
+    borderClass: "border-green-200 dark:border-green-800",
+    fields: [
+      {
+        key: "precoKwhUsado",
+        label: "Preço kWh Usado",
+        type: "text" as const,
+        readonly: true,
+        formula: "Preço do kWh para o mês de referência conforme cadastrado no sistema"
+      },
+      { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado", type: "text" as const },
+      { key: "precoFioB", label: "Preço Fio B", type: "text" as const },
+      {
+        key: "fioB",
+        label: "Fio B Total",
+        type: "text" as const,
+        readonly: true,
+        formula: "Consumo SCEE × Preço Fio B"
+      },
+      { key: "precoAdcBandeira", label: "Preço ADC Bandeira", type: "text" as const },
+      { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública", type: "text" as const },
+      { key: "valorTotal", label: "Valor Total da Fatura", type: "text" as const },
+      {
+        key: "valorSemDesconto",
+        label: "Valor Sem Desconto",
+        type: "text" as const,
+        readonly: true,
+        formula: "(Consumo SCEE × Preço kWh) + Valor Total - Fio B"
+      },
+      {
+        key: "valorComDesconto",
+        label: "Valor Com Desconto",
+        type: "text" as const,
+        readonly: true,
+        formula: "((Consumo SCEE × Preço kWh) × (1 - Desconto%)) + Valor Total - Fio B"
+      },
+      {
+        key: "economia",
+        label: "Economia do Cliente",
+        type: "text" as const,
+        readonly: true,
+        formula: "Valor Sem Desconto - Valor Com Desconto"
+      },
+      {
+        key: "lucro",
+        label: "Lucro Estimado",
+        type: "text" as const,
+        readonly: true,
+        formula: "Valor Com Desconto - Valor Total"
+      },
+    ]
+  }
+];
+
+// Legacy flat config for compatibility
 const FIELD_CONFIG: {
   key: keyof ExtractedData | "fioB";
   label: string;
   type: "text" | "number";
   readonly?: boolean;
   formula?: string;
-}[] = [
-  { key: "cpfCnpj", label: "CPF/CNPJ", type: "text" },
-  { key: "nomeCliente", label: "Nome do Cliente", type: "text" },
-  { key: "endereco", label: "Endereço", type: "text" },
-  { key: "unidadeConsumidora", label: "Unidade Consumidora", type: "text" },
-  { key: "mesReferencia", label: "Mês de Referência", type: "text" },
-  { key: "precoKwhUsado", label: "Preço kWh Usado nos Cálculos (R$)", type: "text" },
-  { key: "dataVencimento", label: "Data de Vencimento", type: "text" },
-  { key: "leituraAnterior", label: "Leitura Anterior", type: "text" },
-  { key: "leituraAtual", label: "Leitura Atual", type: "text" },
-  { key: "quantidadeDias", label: "Quantidade de Dias", type: "text" },
-  { key: "consumoKwh", label: "Consumo Total (kWh)", type: "text" },
-  { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" },
-  { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" },
-  { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado (R$)", type: "text" },
-  { key: "precoFioB", label: "Preço Fio B (R$)", type: "text" },
-  {
-    key: "fioB",
-    label: "Fio B (R$)",
-    type: "text",
-    readonly: true,
-    formula: "Consumo SCEE × Preço Fio B"
-  },
-  { key: "precoAdcBandeira", label: "Preço ADC Bandeira (R$)", type: "text" },
-  { key: "contribuicaoIluminacao", label: "Contribuição Iluminação Pública (R$)", type: "text" },
-  { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" },
-  { key: "saldoKwh", label: "Saldo (kWh)", type: "text" },
-  { key: "cicloGeracao", label: "Ciclo de Geração", type: "text" },
-  { key: "ucGeradora", label: "UC Geradora", type: "text" },
-  { key: "geracaoUltimoCiclo", label: "Geração Último Ciclo (kWh)", type: "text" },
-  {
-    key: "valorSemDesconto",
-    label: "Valor Sem Desconto (R$)",
-    type: "text",
-    readonly: true,
-    formula: "(Consumo SCEE × Preço kWh) + Valor Total - Fio B"
-  },
-  {
-    key: "valorComDesconto",
-    label: "Valor Com Desconto (R$)",
-    type: "text",
-    readonly: true,
-    formula: "((Consumo SCEE × Preço kWh) × (1 - Desconto%)) + Valor Total - Fio B"
-  },
-  {
-    key: "economia",
-    label: "Economia (R$)",
-    type: "text",
-    readonly: true,
-    formula: "Valor Sem Desconto - Valor Com Desconto"
-  },
-  {
-    key: "lucro",
-    label: "Lucro Estimado (R$)",
-    type: "text",
-    readonly: true,
-    formula: "Valor Com Desconto - Valor Total"
-  },
-];
+}[] = FIELD_CATEGORIES.flatMap(category => category.fields) as any;
 
 export default function FaturasUploadPage() {
   const [, navigate] = useLocation();
@@ -175,6 +210,12 @@ export default function FaturasUploadPage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("");
   const [precoKwh, setPrecoKwh] = useState<string>("");
+  const [precoKwhInfo, setPrecoKwhInfo] = useState<{
+    valor: string;
+    mesOrigem: string;
+    mesReferencia: string;
+    usandoFallback: boolean;
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [pendingFaturas, setPendingFaturas] = useState<PendingFatura[]>([]);
@@ -256,9 +297,11 @@ export default function FaturasUploadPage() {
 
       // Tentar buscar o preço do kWh automaticamente pelo mês de referência
       let fetchedPrecoKwh = precoKwh;
+      let precoInfo: typeof precoKwhInfo = null;
+
       if (data.mesReferencia) {
         try {
-          // Codificar o mês para URL (DEZ/2025 -> DEZ%2F2025)
+          // 1. Tentar buscar preço do mês específico
           const mesEncoded = encodeURIComponent(data.mesReferencia);
           console.log("🔍 [UPLOAD] Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
 
@@ -267,22 +310,72 @@ export default function FaturasUploadPage() {
           console.log("📦 [UPLOAD] Resposta da API de preço (JSON parseado):", precoResponse);
 
           if (precoResponse.precoKwhCalculado) {
-            // Garantir que o valor mantém todos os decimais
+            // Preço encontrado para o mês específico
             fetchedPrecoKwh = precoResponse.precoKwhCalculado;
-            console.log("✅ [UPLOAD] Preço buscado do banco:", fetchedPrecoKwh, "tipo:", typeof fetchedPrecoKwh);
+            precoInfo = {
+              valor: fetchedPrecoKwh,
+              mesOrigem: data.mesReferencia,
+              mesReferencia: data.mesReferencia,
+              usandoFallback: false
+            };
 
-            // Atualizar o estado global do preço
+            console.log("✅ [UPLOAD] Preço encontrado para", data.mesReferencia, ":", fetchedPrecoKwh);
             setPrecoKwh(fetchedPrecoKwh);
+            setPrecoKwhInfo(precoInfo);
 
             toast({
               title: "Preço detectado automaticamente",
               description: `Preço de R$ ${Number(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
             });
           } else {
-            console.warn("⚠️ [UPLOAD] API retornou resposta mas sem precoKwhCalculado:", precoResponse);
+            console.warn("⚠️ [UPLOAD] Preço não encontrado para", data.mesReferencia, ", buscando último preço disponível...");
+
+            // 2. Buscar último preço disponível (fallback)
+            try {
+              const allPrecosResponse = await apiRequest("GET", "/api/precos-kwh");
+              const allPrecos = await allPrecosResponse.json();
+
+              if (allPrecos && allPrecos.length > 0) {
+                // Ordenar por mês decrescente e pegar o mais recente
+                const ultimoPreco = allPrecos.sort((a: any, b: any) => {
+                  const [mesA, anoA] = a.mesReferencia.split("/");
+                  const [mesB, anoB] = b.mesReferencia.split("/");
+                  if (anoB !== anoA) return parseInt(anoB) - parseInt(anoA);
+                  const monthOrder = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+                  return monthOrder.indexOf(mesB) - monthOrder.indexOf(mesA);
+                })[0];
+
+                fetchedPrecoKwh = ultimoPreco.precoKwhCalculado;
+                precoInfo = {
+                  valor: fetchedPrecoKwh,
+                  mesOrigem: ultimoPreco.mesReferencia,
+                  mesReferencia: data.mesReferencia,
+                  usandoFallback: true
+                };
+
+                console.log("⚠️ [UPLOAD] Usando preço de", ultimoPreco.mesReferencia, "como fallback:", fetchedPrecoKwh);
+                setPrecoKwh(fetchedPrecoKwh);
+                setPrecoKwhInfo(precoInfo);
+
+                toast({
+                  title: "⚠️ Preço de outro mês sendo usado",
+                  description: `Não há preço cadastrado para ${data.mesReferencia}. Usando preço de ${ultimoPreco.mesReferencia}: R$ ${Number(fetchedPrecoKwh).toFixed(6)}/kWh`,
+                  variant: "destructive",
+                });
+              } else {
+                console.error("❌ [UPLOAD] Nenhum preço cadastrado no sistema!");
+                toast({
+                  title: "Erro: Nenhum preço cadastrado",
+                  description: "Cadastre pelo menos um preço kWh antes de fazer upload de faturas.",
+                  variant: "destructive",
+                });
+              }
+            } catch (fallbackError) {
+              console.error("❌ [UPLOAD] Erro ao buscar preços disponíveis:", fallbackError);
+            }
           }
         } catch (error) {
-          console.error("❌ [UPLOAD] Erro ao buscar preço para o mês:", data.mesReferencia, error);
+          console.error("❌ [UPLOAD] Erro ao buscar preço:", error);
         }
       } else {
         console.warn("⚠️ [UPLOAD] Mês de referência não detectado na fatura");
