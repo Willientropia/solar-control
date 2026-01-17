@@ -15,8 +15,8 @@ interface MonthYearPickerProps {
 }
 
 const MONTHS = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+  "JAN", "FEV", "MAR", "ABR", "MAI", "JUN",
+  "JUL", "AGO", "SET", "OUT", "NOV", "DEZ",
 ];
 
 export function MonthYearPicker({ value, onChange, className }: MonthYearPickerProps) {
