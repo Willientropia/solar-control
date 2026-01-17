@@ -1175,51 +1175,72 @@ export default function FaturasUploadPage() {
 
                 <Separator />
 
-                <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-                  Dados Extraídos
-                </h4>
-
+                {/* Renderizar campos organizados por categoria */}
                 <TooltipProvider>
-                  <div className="grid gap-3">
-                    {FIELD_CONFIG.map(({ key, label, readonly, formula }) => {
-                      // Log para debug do campo precoKwhUsado
-                      if (key === "precoKwhUsado") {
-                        console.log("🎨 [MODAL] Renderizando campo precoKwhUsado:", formData[key]);
-                      }
-                      return (
-                      <div key={key} className="space-y-1">
-                        <div className="flex items-center gap-1">
-                          <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
-                            {label}
-                          </Label>
-                          {readonly && formula && (
-                            <Tooltip delayDuration={200}>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent side="right" className="max-w-xs">
-                                <p className="text-xs font-mono">{formula}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                        <Input
-                          id={`field-${key}`}
-                          value={formData[key] || ""}
-                          onChange={(e) => handleFieldChange(key, e.target.value)}
-                          placeholder={`Informe ${label.toLowerCase()}`}
-                          className={cn(
-                            "h-8 text-sm",
-                            readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground"
-                          )}
-                          readOnly={readonly}
-                          disabled={readonly}
-                          data-testid={`input-field-${key}`}
-                        />
+                  {FIELD_CATEGORIES.map((category) => (
+                    <div key={category.name} className="space-y-3">
+                      <h4 className={cn(
+                        "font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border",
+                        category.bgClass,
+                        category.borderClass
+                      )}>
+                        {category.name}
+                      </h4>
+
+                      <div className="grid gap-2 pl-2">
+                        {category.fields.map(({ key, label, readonly, formula }) => {
+                          // Tooltip especial para precoKwhUsado
+                          let tooltipContent = formula;
+                          if (key === "precoKwhUsado" && precoKwhInfo) {
+                            if (precoKwhInfo.usandoFallback) {
+                              tooltipContent = `⚠️ Preço de ${precoKwhInfo.mesOrigem} sendo usado (não há preço cadastrado para ${precoKwhInfo.mesReferencia})`;
+                            } else {
+                              tooltipContent = `Preço cadastrado para ${precoKwhInfo.mesOrigem}`;
+                            }
+                          }
+
+                          return (
+                            <div key={key} className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Label htmlFor={`field-${key}`} className="text-xs text-muted-foreground">
+                                  {label}
+                                </Label>
+                                {(readonly && (formula || key === "precoKwhUsado")) && (
+                                  <Tooltip delayDuration={200}>
+                                    <TooltipTrigger asChild>
+                                      <Info className={cn(
+                                        "h-3.5 w-3.5 transition-colors cursor-help",
+                                        key === "precoKwhUsado" && precoKwhInfo?.usandoFallback
+                                          ? "text-amber-600 dark:text-amber-400"
+                                          : "text-muted-foreground/60 hover:text-muted-foreground"
+                                      )} />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="max-w-xs">
+                                      <p className="text-xs">{tooltipContent}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                              <Input
+                                id={`field-${key}`}
+                                value={formData[key] || ""}
+                                onChange={(e) => handleFieldChange(key, e.target.value)}
+                                placeholder={`Informe ${label.toLowerCase()}`}
+                                className={cn(
+                                  "h-8 text-sm",
+                                  readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground",
+                                  key === "precoKwhUsado" && precoKwhInfo?.usandoFallback && "border-amber-300 dark:border-amber-700"
+                                )}
+                                readOnly={readonly}
+                                disabled={readonly}
+                                data-testid={`input-field-${key}`}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
-                      );
-                    })}
-                  </div>
+                    </div>
+                  ))}
                 </TooltipProvider>
               </div>
             </ScrollArea>
