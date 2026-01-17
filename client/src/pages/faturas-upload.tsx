@@ -262,8 +262,9 @@ export default function FaturasUploadPage() {
           const mesEncoded = encodeURIComponent(data.mesReferencia);
           console.log("🔍 [UPLOAD] Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
 
-          const precoResponse = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
-          console.log("📦 [UPLOAD] Resposta da API de preço:", precoResponse);
+          const response = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
+          const precoResponse = await response.json();
+          console.log("📦 [UPLOAD] Resposta da API de preço (JSON parseado):", precoResponse);
 
           if (precoResponse.precoKwhCalculado) {
             // Garantir que o valor mantém todos os decimais
