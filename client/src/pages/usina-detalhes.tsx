@@ -33,6 +33,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -52,9 +58,11 @@ import {
   ChevronRight,
   Loader2,
   FileDown,
+  Info,
+  Calculator,
 } from "lucide-react";
 import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
-import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef } from "@/lib/utils";
+import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, cn } from "@/lib/utils";
 
 function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): string[] {
   const months = new Set([
@@ -70,6 +78,60 @@ function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): strin
   });
 }
 
+// Field categories for organized display in edit modal
+const FIELD_CATEGORIES = [
+  {
+    name: "Informações Gerais",
+    color: "blue",
+    bgClass: "bg-blue-50 dark:bg-blue-950/30",
+    borderClass: "border-blue-200 dark:border-blue-800",
+    textClass: "text-blue-700 dark:text-blue-300",
+    fields: [
+      { key: "mesReferencia", label: "Mês Referência", type: "text" as const },
+      { key: "dataVencimento", label: "Data Vencimento", type: "text" as const },
+    ]
+  },
+  {
+    name: "Consumo e Geração (kWh)",
+    color: "amber",
+    bgClass: "bg-amber-50 dark:bg-amber-950/30",
+    borderClass: "border-amber-200 dark:border-amber-800",
+    textClass: "text-amber-700 dark:text-amber-300",
+    fields: [
+      { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" as const },
+      { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" as const },
+      { key: "energiaInjetada", label: "Energia Injetada (kWh)", type: "text" as const },
+      { key: "saldoKwh", label: "Saldo (kWh)", type: "text" as const },
+    ]
+  },
+  {
+    name: "Valores Monetários (R$)",
+    color: "green",
+    bgClass: "bg-green-50 dark:bg-green-950/30",
+    borderClass: "border-green-200 dark:border-green-800",
+    textClass: "text-green-700 dark:text-green-300",
+    fields: [
+      { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" as const },
+      { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text" as const },
+      { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text" as const },
+      {
+        key: "economia",
+        label: "Economia (R$)",
+        type: "text" as const,
+        readonly: true,
+        formula: "Economia = Valor Sem Desconto - Valor Com Desconto"
+      },
+      {
+        key: "lucro",
+        label: "Lucro (R$)",
+        type: "text" as const,
+        readonly: true,
+        formula: "Lucro = Valor Com Desconto - Valor Total Fatura"
+      },
+    ]
+  }
+];
+
 export default function UsinaDetalhesPage() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -81,6 +143,12 @@ export default function UsinaDetalhesPage() {
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [selectedReportMonths, setSelectedReportMonths] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [precoKwhInfo, setPrecoKwhInfo] = useState<{
+    valor: string;
+    mesOrigem: string;
+    mesReferencia: string;
+    usandoFallback: boolean;
+  } | null>(null);
 
   const { data: allUsinas = [], isLoading: loadingUsina } = useQuery<Usina[]>({
     queryKey: ["/api/usinas"],
@@ -210,6 +278,7 @@ export default function UsinaDetalhesPage() {
   
   const openEditModal = (fatura: Fatura) => {
     setEditingFatura(fatura);
+    setPrecoKwhInfo(null); // Reset price info when opening modal
     setEditFormData({
       mesReferencia: fatura.mesReferencia || "",
       dataVencimento: fatura.dataVencimento || "",
@@ -259,6 +328,106 @@ export default function UsinaDetalhesPage() {
     });
 
     updateFaturaMutation.mutate({ id: editingFatura.id, updates });
+  };
+
+  const handleRecalculate = async () => {
+    if (!editFormData.mesReferencia) {
+      toast({
+        title: "Erro",
+        description: "Mês de referência não informado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Fetch price for the month
+      const mesEncoded = encodeURIComponent(editFormData.mesReferencia);
+      const response = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
+      const precoResponse = await response.json();
+
+      let fetchedPrecoKwh = "0";
+      let precoInfo: typeof precoKwhInfo = null;
+
+      if (precoResponse.precoKwhCalculado) {
+        // Price found for this month
+        fetchedPrecoKwh = precoResponse.precoKwhCalculado;
+        precoInfo = {
+          valor: fetchedPrecoKwh,
+          mesOrigem: editFormData.mesReferencia,
+          mesReferencia: editFormData.mesReferencia,
+          usandoFallback: false
+        };
+      } else {
+        // Fallback: use most recent price
+        const allPrecosResponse = await apiRequest("GET", "/api/precos-kwh");
+        const allPrecos = await allPrecosResponse.json();
+
+        if (allPrecos.length === 0) {
+          toast({
+            title: "Erro",
+            description: "Nenhum preço kWh cadastrado no sistema",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const ultimoPreco = allPrecos.sort((a: any, b: any) => {
+          const [mesA, anoA] = a.mesReferencia.split("/");
+          const [mesB, anoB] = b.mesReferencia.split("/");
+          if (anoA !== anoB) return parseInt(anoB) - parseInt(anoA);
+          const monthOrder = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+          return monthOrder.indexOf(mesB) - monthOrder.indexOf(mesA);
+        })[0];
+
+        fetchedPrecoKwh = ultimoPreco.precoKwhCalculado;
+        precoInfo = {
+          valor: fetchedPrecoKwh,
+          mesOrigem: ultimoPreco.mesReferencia,
+          mesReferencia: editFormData.mesReferencia,
+          usandoFallback: true
+        };
+
+        toast({
+          title: "Preço não encontrado",
+          description: `Usando preço de ${ultimoPreco.mesReferencia}: R$ ${parseFloat(fetchedPrecoKwh).toFixed(4)}/kWh`,
+          variant: "default",
+        });
+      }
+
+      setPrecoKwhInfo(precoInfo);
+
+      // Recalculate all values
+      const precoKwh = parseFloat(fetchedPrecoKwh);
+      const consumoScee = parseToNumber(editFormData.consumoScee || "0");
+      const energiaInjetada = parseToNumber(editFormData.energiaInjetada || "0");
+      const valorTotal = parseToNumber(editFormData.valorTotal || "0");
+
+      const valorSemDesconto = consumoScee * precoKwh;
+      const economia = energiaInjetada * precoKwh;
+      const valorComDesconto = valorSemDesconto - economia;
+      const lucro = valorComDesconto - valorTotal;
+
+      setEditFormData(prev => ({
+        ...prev,
+        valorSemDesconto: formatNumber(valorSemDesconto),
+        economia: formatNumber(economia),
+        valorComDesconto: formatNumber(valorComDesconto),
+        lucro: formatNumber(lucro),
+      }));
+
+      toast({
+        title: "Valores recalculados",
+        description: `Preço kWh: R$ ${precoKwh.toFixed(4)}`,
+      });
+    } catch (error) {
+      console.error("Error recalculating:", error);
+      toast({
+        title: "Erro ao recalcular",
+        description: "Não foi possível buscar o preço kWh",
+        variant: "destructive",
+      });
+    }
   };
 
   // Get available months for report selection
@@ -803,140 +972,123 @@ export default function UsinaDetalhesPage() {
       </Tabs>
       
       <Dialog open={!!editingFatura} onOpenChange={(open) => !open && setEditingFatura(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Editar Fatura</DialogTitle>
             <DialogDescription>
               Edite os dados da fatura de {editingFatura?.cliente?.nome || "cliente"} - {editingFatura?.mesReferencia}
             </DialogDescription>
           </DialogHeader>
-          
-          <ScrollArea className="max-h-[60vh] pr-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-mesReferencia">Mês Referência</Label>
-                <Input
-                  id="edit-mesReferencia"
-                  value={editFormData.mesReferencia || ""}
-                  onChange={(e) => handleEditFieldChange("mesReferencia", e.target.value)}
-                />
+
+          <ScrollArea className="max-h-[55vh] pr-4">
+            <TooltipProvider>
+              <div className="space-y-6">
+                {FIELD_CATEGORIES.map((category) => (
+                  <div key={category.name} className="space-y-3">
+                    <h4 className={cn(
+                      "font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border",
+                      category.bgClass,
+                      category.borderClass,
+                      category.textClass
+                    )}>
+                      {category.name}
+                    </h4>
+                    <div className="grid gap-3 md:grid-cols-2 pl-2">
+                      {category.fields.map(({ key, label, readonly, formula }) => (
+                        <div key={key} className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`edit-${key}`} className="text-sm">
+                              {label}
+                            </Label>
+                            {(readonly && formula) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs">{formula}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                          <Input
+                            id={`edit-${key}`}
+                            value={editFormData[key] || ""}
+                            onChange={(e) => handleEditFieldChange(key, e.target.value)}
+                            className={cn(readonly && "bg-muted")}
+                            disabled={readonly}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Status field */}
+                <div className="space-y-3 pt-2 border-t">
+                  <h4 className="font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border bg-slate-50 dark:bg-slate-950/30 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                    Status
+                  </h4>
+                  <div className="space-y-2 pl-2">
+                    <Label htmlFor="edit-status">Status da Fatura</Label>
+                    <Select
+                      value={editFormData.status || "pendente"}
+                      onValueChange={(value) => handleEditFieldChange("status", value)}
+                    >
+                      <SelectTrigger id="edit-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pendente">Pendente</SelectItem>
+                        <SelectItem value="processada">Processada</SelectItem>
+                        <SelectItem value="enviada">Enviada</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-dataVencimento">Data Vencimento</Label>
-                <Input
-                  id="edit-dataVencimento"
-                  value={editFormData.dataVencimento || ""}
-                  onChange={(e) => handleEditFieldChange("dataVencimento", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-consumoScee">Consumo SCEE (kWh)</Label>
-                <Input
-                  id="edit-consumoScee"
-                  value={editFormData.consumoScee || ""}
-                  onChange={(e) => handleEditFieldChange("consumoScee", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-consumoNaoCompensado">Consumo Não Compensado (kWh)</Label>
-                <Input
-                  id="edit-consumoNaoCompensado"
-                  value={editFormData.consumoNaoCompensado || ""}
-                  onChange={(e) => handleEditFieldChange("consumoNaoCompensado", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-energiaInjetada">Energia Injetada (kWh)</Label>
-                <Input
-                  id="edit-energiaInjetada"
-                  value={editFormData.energiaInjetada || ""}
-                  onChange={(e) => handleEditFieldChange("energiaInjetada", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-saldoKwh">Saldo (kWh)</Label>
-                <Input
-                  id="edit-saldoKwh"
-                  value={editFormData.saldoKwh || ""}
-                  onChange={(e) => handleEditFieldChange("saldoKwh", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-valorTotal">Valor Total Fatura (R$)</Label>
-                <Input
-                  id="edit-valorTotal"
-                  value={editFormData.valorTotal || ""}
-                  onChange={(e) => handleEditFieldChange("valorTotal", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-valorSemDesconto">Valor Sem Desconto (R$)</Label>
-                <Input
-                  id="edit-valorSemDesconto"
-                  value={editFormData.valorSemDesconto || ""}
-                  onChange={(e) => handleEditFieldChange("valorSemDesconto", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-valorComDesconto">Valor Com Desconto (R$)</Label>
-                <Input
-                  id="edit-valorComDesconto"
-                  value={editFormData.valorComDesconto || ""}
-                  onChange={(e) => handleEditFieldChange("valorComDesconto", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-economia">Economia (R$)</Label>
-                <Input
-                  id="edit-economia"
-                  value={editFormData.economia || ""}
-                  onChange={(e) => handleEditFieldChange("economia", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-lucro">Lucro (R$)</Label>
-                <Input
-                  id="edit-lucro"
-                  value={editFormData.lucro || ""}
-                  onChange={(e) => handleEditFieldChange("lucro", e.target.value)}
-                  className="bg-muted"
-                  disabled
-                />
-                <p className="text-xs text-muted-foreground">Calculado automaticamente</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select
-                  value={editFormData.status || "pendente"}
-                  onValueChange={(value) => handleEditFieldChange("status", value)}
-                >
-                  <SelectTrigger id="edit-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="processada">Processada</SelectItem>
-                    <SelectItem value="enviada">Enviada</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            </TooltipProvider>
           </ScrollArea>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingFatura(null)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={updateFaturaMutation.isPending}>
-              {updateFaturaMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                "Salvar Alterações"
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <div className="flex-1 flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRecalculate}
+                className="gap-2"
+              >
+                <Calculator className="h-4 w-4" />
+                Recalcular Valores
+              </Button>
+              {precoKwhInfo && (
+                <div className={cn(
+                  "flex items-center gap-1 text-xs px-2 py-1 rounded-md border",
+                  precoKwhInfo.usandoFallback
+                    ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                    : "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300"
+                )}>
+                  {precoKwhInfo.usandoFallback && "⚠️ "}
+                  Preço: R$ {parseFloat(precoKwhInfo.valor).toFixed(4)}/kWh
+                  {precoKwhInfo.usandoFallback && ` (${precoKwhInfo.mesOrigem})`}
+                </div>
               )}
-            </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEditingFatura(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={updateFaturaMutation.isPending}>
+                {updateFaturaMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  "Salvar Alterações"
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
