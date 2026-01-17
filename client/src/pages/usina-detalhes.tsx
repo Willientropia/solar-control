@@ -65,8 +65,8 @@ function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): strin
     const [mesA, anoA] = a.split("/");
     const [mesB, anoB] = b.split("/");
     if (anoA !== anoB) return parseInt(anoB) - parseInt(anoA);
-    const monthOrder = ["Dez", "Nov", "Out", "Set", "Ago", "Jul", "Jun", "Mai", "Abr", "Mar", "Fev", "Jan"];
-    return monthOrder.indexOf(mesA) - monthOrder.indexOf(mesB);
+    const monthOrder = ["DEZ", "NOV", "OUT", "SET", "AGO", "JUL", "JUN", "MAI", "ABR", "MAR", "FEV", "JAN"];
+    return monthOrder.indexOf(mesA.toUpperCase()) - monthOrder.indexOf(mesB.toUpperCase());
   });
 }
 
@@ -108,7 +108,7 @@ export default function UsinaDetalhesPage() {
   const getPreviousMonthRef = (): string => {
     const now = new Date();
     now.setMonth(now.getMonth() - 1);
-    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
     return `${months[now.getMonth()]}/${now.getFullYear()}`;
   };
   const previousMonth = getPreviousMonthRef();
@@ -264,8 +264,8 @@ export default function UsinaDetalhesPage() {
   // Get available months for report selection
   const availableMonths = getAvailableMonths(allUsinaFaturas, geracoes);
   
-  // Calculate monthly status
-  const faturasDoMes = faturas.filter((f) => f.mesReferencia === currentMonth);
+  // Calculate monthly status (case-insensitive comparison for compatibility)
+  const faturasDoMes = faturas.filter((f) => f.mesReferencia.toUpperCase() === currentMonth.toUpperCase());
   const clientesComFatura = new Set(faturasDoMes.map((f) => f.clienteId));
   const clientesSemFatura = clientes.filter((c) => !clientesComFatura.has(c.id));
   const todasFaturasImportadas = clientesSemFatura.length === 0 && clientes.length > 0;

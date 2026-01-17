@@ -580,14 +580,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return "";
     }
 
-    // Parse month reference (e.g., "Jan/2026" -> month: 1, year: 2026)
+    // Parse month reference (e.g., "JAN/2026" -> month: 1, year: 2026)
     const [monthName, year] = mesReferencia.split("/");
     const months: Record<string, string> = {
-      "Jan": "01", "Fev": "02", "Mar": "03", "Abr": "04",
-      "Mai": "05", "Jun": "06", "Jul": "07", "Ago": "08",
-      "Set": "09", "Out": "10", "Nov": "11", "Dez": "12"
+      "JAN": "01", "FEV": "02", "MAR": "03", "ABR": "04",
+      "MAI": "05", "JUN": "06", "JUL": "07", "AGO": "08",
+      "SET": "09", "OUT": "10", "NOV": "11", "DEZ": "12"
     };
-    const monthNum = months[monthName] || "01";
+    const monthNum = months[monthName.toUpperCase()] || "01";
     const monthNumInt = parseInt(monthNum);
 
     // Build new folder structure: Usina-NAME/faturas/YEAR/Mês-N/
@@ -1512,7 +1512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Helper function for current month
   function getCurrentMonthRef(): string {
     const now = new Date();
-    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
     return `${months[now.getMonth()]}/${now.getFullYear()}`;
   }
 
@@ -1521,9 +1521,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!monthRef) return "";
     const parts = monthRef.trim().split("/");
     if (parts.length !== 2) return monthRef;
-    
+
     let [month, year] = parts;
-    month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    month = month.toUpperCase();
     if (year.length === 2) {
       year = "20" + year;
     }
