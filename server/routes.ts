@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
+import { ExcelService } from "./services/excel-service";
 import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
@@ -1807,14 +1808,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let deletedCount = 0;
 
       for (const f of allFaturas) {
-        if (!f.dataVencimento || f.status !== "pago") continue; // Only delete PAID invoices? User didn't specify, but safer. 
+        if (!f.dataVencimento || f.status !== "pago") continue; // Only delete PAID invoices? User didn't specify, but safer.
         // User said: "depois de enviar... baixar... 30 dias após vencimento... apagar".
         // Implies we delete regardless of status? Or only if processed?
         // Safe bet: Delete if > 30 days past due.
-        
+
         const parts = f.dataVencimento.split('/');
         if (parts.length !== 3) continue;
-        
+
         const vencimento = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
         const deadline = new Date(vencimento);
         deadline.setDate(deadline.getDate() + 30);
@@ -1832,12 +1833,260 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           deletedCount++;
         }
       }
-      
+
       await logAction(req.user.claims.sub, "cleanup", "fatura", undefined, { deletedCount });
       res.json({ message: `Limpeza concluída. ${deletedCount} faturas antigas removidas.` });
     } catch (error: any) {
       console.error("Error cleaning up faturas:", error);
       res.status(500).json({ message: "Erro na limpeza de faturas", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // EXPORT/IMPORT DE DADOS (EXCEL) - Admin only
+  // ============================================================
+
+  // Configure multer for Excel uploads
+  const excelUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => {
+        const backupDir = path.join(process.cwd(), "backups");
+        if (!fs.existsSync(backupDir)) {
+          fs.mkdirSync(backupDir, { recursive: true });
+        }
+        cb(null, backupDir);
+      },
+      filename: (req, file, cb) => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        cb(null, `import-${timestamp}-${file.originalname}`);
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+        cb(null, true);
+      } else {
+        cb(new Error("Only Excel files (.xlsx) are allowed"));
+      }
+    },
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+  });
+
+  // Export all data to Excel
+  app.get("/api/admin/export/all", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const usinaId = req.query.usinaId as string | undefined;
+      const mesReferencia = req.query.mesReferencia as string | undefined;
+
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: true,
+        includeClientes: true,
+        includeFaturas: true,
+        includeGeracao: true,
+        includePrecos: true,
+        usinaId,
+        mesReferencia,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Export-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "all", undefined, { filename, usinaId, mesReferencia });
+    } catch (error: any) {
+      console.error("Error exporting data:", error);
+      res.status(500).json({ message: "Erro ao exportar dados", error: error.message });
+    }
+  });
+
+  // Export only Usinas
+  app.get("/api/admin/export/usinas", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: true,
+        includeClientes: false,
+        includeFaturas: false,
+        includeGeracao: false,
+        includePrecos: false,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Usinas-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "usinas", undefined, { filename });
+    } catch (error: any) {
+      console.error("Error exporting usinas:", error);
+      res.status(500).json({ message: "Erro ao exportar usinas", error: error.message });
+    }
+  });
+
+  // Export only Clientes
+  app.get("/api/admin/export/clientes", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: false,
+        includeClientes: true,
+        includeFaturas: false,
+        includeGeracao: false,
+        includePrecos: false,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Clientes-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "clientes", undefined, { filename });
+    } catch (error: any) {
+      console.error("Error exporting clientes:", error);
+      res.status(500).json({ message: "Erro ao exportar clientes", error: error.message });
+    }
+  });
+
+  // Export only Faturas
+  app.get("/api/admin/export/faturas", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: false,
+        includeClientes: false,
+        includeFaturas: true,
+        includeGeracao: false,
+        includePrecos: false,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Faturas-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "faturas", undefined, { filename });
+    } catch (error: any) {
+      console.error("Error exporting faturas:", error);
+      res.status(500).json({ message: "Erro ao exportar faturas", error: error.message });
+    }
+  });
+
+  // Export only Geração Mensal
+  app.get("/api/admin/export/geracao", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: false,
+        includeClientes: false,
+        includeFaturas: false,
+        includeGeracao: true,
+        includePrecos: false,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Geracao-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "geracao", undefined, { filename });
+    } catch (error: any) {
+      console.error("Error exporting geracao:", error);
+      res.status(500).json({ message: "Erro ao exportar geração mensal", error: error.message });
+    }
+  });
+
+  // Export only Preços kWh
+  app.get("/api/admin/export/precos", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const workbook = await ExcelService.exportAllData({
+        includeUsinas: false,
+        includeClientes: false,
+        includeFaturas: false,
+        includeGeracao: false,
+        includePrecos: true,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `SolarControl-Precos-${timestamp}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+      await logAction(req.user.claims.sub, "export", "precos", undefined, { filename });
+    } catch (error: any) {
+      console.error("Error exporting precos:", error);
+      res.status(500).json({ message: "Erro ao exportar preços kWh", error: error.message });
+    }
+  });
+
+  // Preview import (validation only, no save)
+  app.post("/api/admin/import/preview", isAuthenticated, isAdmin, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
+      }
+
+      const preview = await ExcelService.previewImport(req.file.path);
+
+      // Delete temp file after preview
+      fs.unlinkSync(req.file.path);
+
+      res.json(preview);
+    } catch (error: any) {
+      console.error("Error previewing import:", error);
+      res.status(500).json({ message: "Erro ao validar arquivo", error: error.message });
+    }
+  });
+
+  // Import data from Excel
+  app.post("/api/admin/import", isAuthenticated, isAdmin, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
+      }
+
+      const mode = req.body.mode || 'merge'; // merge, replace, append
+      if (!['merge', 'replace', 'append'].includes(mode)) {
+        return res.status(400).json({ message: "Modo inválido. Use: merge, replace ou append" });
+      }
+
+      const result = await ExcelService.importFromExcel(req.file.path, { mode });
+
+      // Keep file for audit purposes (don't delete)
+      await logAction(req.user.claims.sub, "import", "all", undefined, {
+        filename: req.file.filename,
+        mode,
+        result
+      });
+
+      res.json({
+        message: "Import concluído com sucesso",
+        result,
+      });
+    } catch (error: any) {
+      console.error("Error importing data:", error);
+      res.status(500).json({ message: "Erro ao importar dados", error: error.message });
     }
   });
 
