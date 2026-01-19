@@ -19,9 +19,9 @@ import type { User, RefreshToken } from '../../shared/schema';
 // ============ CONFIGURAÇÃO ============
 
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_THIS_IN_PRODUCTION_PLEASE_USE_ENV_VAR';
-const JWT_EXPIRES_IN = '15m'; // Access token expira em 15 minutos
-const REFRESH_TOKEN_EXPIRES_IN_DAYS = 7; // Refresh token expira em 7 dias
-const BCRYPT_ROUNDS = 12; // Salt rounds para bcrypt
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m'; // Access token expira em 15 minutos
+const REFRESH_TOKEN_EXPIRES_IN_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '7', 10); // Refresh token expira em 7 dias
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12', 10); // Salt rounds para bcrypt
 
 // ============ TIPOS ============
 

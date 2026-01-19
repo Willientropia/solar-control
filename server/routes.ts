@@ -10,6 +10,8 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
+import * as AuthService from "./services/auth-service";
+import { requireAuth, requireRole } from "./middleware/auth";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -121,6 +123,196 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await setupAuth(app);
   registerAuthRoutes(app);
 
+  // ==================== JWT AUTHENTICATION ====================
+
+  // Register new user
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const result = await AuthService.register(req.body);
+
+      if (!result) {
+        return res.status(400).json({
+          error: "Falha ao criar usuário",
+          message: "Email pode já estar em uso ou dados inválidos"
+        });
+      }
+
+      res.status(201).json({
+        message: "Usuário criado com sucesso",
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          organization: result.user.organization,
+          role: result.user.role,
+        },
+        tokens: result.tokens,
+      });
+    } catch (error: any) {
+      console.error("Error registering user:", error);
+
+      if (error.message?.includes("Email já está em uso")) {
+        return res.status(409).json({
+          error: "Email já cadastrado",
+          message: "Este email já está registrado no sistema"
+        });
+      }
+
+      res.status(500).json({
+        error: "Erro ao criar usuário",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Login
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const result = await AuthService.login(req.body);
+
+      if (!result) {
+        return res.status(401).json({
+          error: "Credenciais inválidas",
+          message: "Email ou senha incorretos"
+        });
+      }
+
+      res.json({
+        message: "Login realizado com sucesso",
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          organization: result.user.organization,
+          role: result.user.role,
+          isActive: result.user.isActive,
+          emailVerified: result.user.emailVerified,
+        },
+        tokens: result.tokens,
+      });
+    } catch (error: any) {
+      console.error("Error logging in:", error);
+      res.status(500).json({
+        error: "Erro ao fazer login",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Refresh access token
+  app.post("/api/auth/refresh", async (req, res) => {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          error: "Token não fornecido",
+          message: "Refresh token é obrigatório"
+        });
+      }
+
+      const tokens = await AuthService.refreshAccessToken(refreshToken);
+
+      if (!tokens) {
+        return res.status(401).json({
+          error: "Token inválido",
+          message: "Refresh token inválido ou expirado"
+        });
+      }
+
+      res.json({
+        message: "Token atualizado com sucesso",
+        tokens,
+      });
+    } catch (error: any) {
+      console.error("Error refreshing token:", error);
+      res.status(500).json({
+        error: "Erro ao atualizar token",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Logout
+  app.post("/api/auth/logout", requireAuth, async (req: any, res) => {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          error: "Token não fornecido",
+          message: "Refresh token é obrigatório"
+        });
+      }
+
+      await AuthService.logout(refreshToken);
+
+      res.json({
+        message: "Logout realizado com sucesso"
+      });
+    } catch (error: any) {
+      console.error("Error logging out:", error);
+      res.status(500).json({
+        error: "Erro ao fazer logout",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Get current user info (JWT version)
+  app.get("/api/auth/me", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.userId; // Set by requireAuth middleware
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          error: "Usuário não encontrado",
+          message: "Usuário não existe"
+        });
+      }
+
+      // Get organization membership
+      const membership = await storage.getOrganizationMember(user.id);
+
+      if (!membership) {
+        return res.status(404).json({
+          error: "Membro não encontrado",
+          message: "Usuário não vinculado a nenhuma organização"
+        });
+      }
+
+      const organization = await storage.getOrganization(membership.organizationId);
+
+      res.json({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        isActive: user.isActive,
+        emailVerified: user.emailVerified,
+        lastLoginAt: user.lastLoginAt,
+        createdAt: user.createdAt,
+        organization: {
+          id: organization?.id,
+          name: organization?.name,
+          slug: organization?.slug,
+        },
+        role: membership.role,
+        memberSince: membership.joinedAt,
+      });
+    } catch (error: any) {
+      console.error("Error fetching current user:", error);
+      res.status(500).json({
+        error: "Erro ao buscar usuário",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
   // Get user profile
   app.get("/api/auth/profile", isAuthenticated, async (req: any, res) => {
     try {
@@ -136,6 +328,333 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // ==================== ORGANIZATIONS ====================
+
+  // List all organizations (super_admin sees all, others see only their own)
+  app.get("/api/organizations", requireAuth, async (req: any, res) => {
+    try {
+      const userRole = req.userRole;
+
+      if (userRole === 'super_admin') {
+        // Super admin sees all organizations
+        const organizations = await storage.getOrganizations();
+        res.json(organizations);
+      } else {
+        // Other users see only their organization
+        const organizationId = req.organizationId;
+        const organization = await storage.getOrganization(organizationId);
+
+        if (!organization) {
+          return res.status(404).json({
+            error: "Organização não encontrada",
+            message: "Sua organização não foi encontrada"
+          });
+        }
+
+        res.json([organization]);
+      }
+    } catch (error: any) {
+      console.error("Error fetching organizations:", error);
+      res.status(500).json({
+        error: "Erro ao buscar organizações",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Get organization details
+  app.get("/api/organizations/:id", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userRole = req.userRole;
+      const userOrgId = req.organizationId;
+
+      // Check permissions: super_admin can access any, others only their own
+      if (userRole !== 'super_admin' && id !== userOrgId) {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Você não tem permissão para acessar esta organização"
+        });
+      }
+
+      const organization = await storage.getOrganization(id);
+
+      if (!organization) {
+        return res.status(404).json({
+          error: "Organização não encontrada",
+          message: "Organização não existe"
+        });
+      }
+
+      res.json(organization);
+    } catch (error: any) {
+      console.error("Error fetching organization:", error);
+      res.status(500).json({
+        error: "Erro ao buscar organização",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Create new organization (super_admin only)
+  app.post("/api/organizations", requireAuth, requireRole('super_admin'), async (req: any, res) => {
+    try {
+      const { name, slug, description } = req.body;
+
+      // Validate required fields
+      if (!name || !slug) {
+        return res.status(400).json({
+          error: "Dados incompletos",
+          message: "Nome e slug são obrigatórios"
+        });
+      }
+
+      // Check if slug already exists
+      const existingOrg = await storage.getOrganizationBySlug(slug);
+      if (existingOrg) {
+        return res.status(409).json({
+          error: "Slug já existe",
+          message: "Já existe uma organização com este slug"
+        });
+      }
+
+      const organization = await storage.createOrganization({
+        name,
+        slug,
+        description,
+      });
+
+      res.status(201).json({
+        message: "Organização criada com sucesso",
+        organization,
+      });
+    } catch (error: any) {
+      console.error("Error creating organization:", error);
+      res.status(500).json({
+        error: "Erro ao criar organização",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Update organization
+  app.patch("/api/organizations/:id", requireAuth, requireRole('super_admin', 'admin'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userRole = req.userRole;
+      const userOrgId = req.organizationId;
+
+      // Check permissions: super_admin can update any, admin only their own
+      if (userRole !== 'super_admin' && id !== userOrgId) {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Você não tem permissão para atualizar esta organização"
+        });
+      }
+
+      const { name, description, isActive } = req.body;
+
+      const organization = await storage.updateOrganization(id, {
+        name,
+        description,
+        isActive,
+      });
+
+      if (!organization) {
+        return res.status(404).json({
+          error: "Organização não encontrada",
+          message: "Organização não existe"
+        });
+      }
+
+      res.json({
+        message: "Organização atualizada com sucesso",
+        organization,
+      });
+    } catch (error: any) {
+      console.error("Error updating organization:", error);
+      res.status(500).json({
+        error: "Erro ao atualizar organização",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // List organization members
+  app.get("/api/organizations/:id/members", requireAuth, requireRole('super_admin', 'admin'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userRole = req.userRole;
+      const userOrgId = req.organizationId;
+
+      // Check permissions
+      if (userRole !== 'super_admin' && id !== userOrgId) {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Você não tem permissão para ver os membros desta organização"
+        });
+      }
+
+      const members = await storage.getOrganizationMembers(id);
+
+      res.json(members);
+    } catch (error: any) {
+      console.error("Error fetching organization members:", error);
+      res.status(500).json({
+        error: "Erro ao buscar membros",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Add member to organization (invite)
+  app.post("/api/organizations/:id/members", requireAuth, requireRole('super_admin', 'admin'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userRole = req.userRole;
+      const userOrgId = req.organizationId;
+
+      // Check permissions
+      if (userRole !== 'super_admin' && id !== userOrgId) {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Você não tem permissão para adicionar membros a esta organização"
+        });
+      }
+
+      const { userId, role } = req.body;
+
+      if (!userId || !role) {
+        return res.status(400).json({
+          error: "Dados incompletos",
+          message: "userId e role são obrigatórios"
+        });
+      }
+
+      // Validate role
+      const validRoles = ['super_admin', 'admin', 'operador'];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({
+          error: "Role inválida",
+          message: `Role deve ser uma de: ${validRoles.join(', ')}`
+        });
+      }
+
+      // Only super_admin can assign super_admin role
+      if (role === 'super_admin' && userRole !== 'super_admin') {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Apenas super_admin pode atribuir a role super_admin"
+        });
+      }
+
+      // Check if user exists
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({
+          error: "Usuário não encontrado",
+          message: "Usuário não existe"
+        });
+      }
+
+      // Check if organization exists
+      const organization = await storage.getOrganization(id);
+      if (!organization) {
+        return res.status(404).json({
+          error: "Organização não encontrada",
+          message: "Organização não existe"
+        });
+      }
+
+      const member = await storage.addOrganizationMember({
+        organizationId: id,
+        userId,
+        role,
+      });
+
+      res.status(201).json({
+        message: "Membro adicionado com sucesso",
+        member,
+      });
+    } catch (error: any) {
+      console.error("Error adding organization member:", error);
+
+      // Handle duplicate member error
+      if (error.message?.includes("duplicate") || error.code === '23505') {
+        return res.status(409).json({
+          error: "Membro já existe",
+          message: "Este usuário já é membro desta organização"
+        });
+      }
+
+      res.status(500).json({
+        error: "Erro ao adicionar membro",
+        message: error.message || "Erro interno do servidor"
+      });
+    }
+  });
+
+  // Update organization member (change role)
+  app.patch("/api/organizations/:id/members/:userId", requireAuth, requireRole('super_admin', 'admin'), async (req: any, res) => {
+    try {
+      const { id, userId } = req.params;
+      const userRole = req.userRole;
+      const userOrgId = req.organizationId;
+
+      // Check permissions
+      if (userRole !== 'super_admin' && id !== userOrgId) {
+        return res.status(403).json({
+          error: "Acesso negado",
+          message: "Você não tem permissão para atualizar membros desta organização"
+        });
+      }
+
+      const { role, isActive } = req.body;
+
+      // Validate role if provided
+      if (role) {
+        const validRoles = ['super_admin', 'admin', 'operador'];
+        if (!validRoles.includes(role)) {
+          return res.status(400).json({
+            error: "Role inválida",
+            message: `Role deve ser uma de: ${validRoles.join(', ')}`
+          });
+        }
+
+        // Only super_admin can assign super_admin role
+        if (role === 'super_admin' && userRole !== 'super_admin') {
+          return res.status(403).json({
+            error: "Acesso negado",
+            message: "Apenas super_admin pode atribuir a role super_admin"
+          });
+        }
+      }
+
+      const member = await storage.updateOrganizationMember(id, userId, {
+        role,
+        isActive,
+      });
+
+      if (!member) {
+        return res.status(404).json({
+          error: "Membro não encontrado",
+          message: "Membro não existe nesta organização"
+        });
+      }
+
+      res.json({
+        message: "Membro atualizado com sucesso",
+        member,
+      });
+    } catch (error: any) {
+      console.error("Error updating organization member:", error);
+      res.status(500).json({
+        error: "Erro ao atualizar membro",
+        message: error.message || "Erro interno do servidor"
+      });
     }
   });
 
