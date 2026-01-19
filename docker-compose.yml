@@ -7,6 +7,10 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/soltech
       - SESSION_SECRET=${SESSION_SECRET:-your-session-secret-here}
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-key}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - REFRESH_TOKEN_EXPIRES_DAYS=${REFRESH_TOKEN_EXPIRES_DAYS:-7}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
     command: sh -c "npm run db:push && node dist/index.cjs"
     depends_on:
       db:
