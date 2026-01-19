@@ -30,7 +30,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 
 interface SidebarProps {
-  userRole: "admin" | "operador";
+  userRole: "super_admin" | "admin" | "operador";
 }
 
 const operadorItems = [
@@ -43,6 +43,7 @@ const operadorItems = [
 ];
 
 const adminItems = [
+  { title: "Usuários", url: "/usuarios", icon: Users },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
   { title: "Auditoria", url: "/auditoria", icon: ClipboardList },
   { title: "Configurações", url: "/configuracoes", icon: Settings },
@@ -106,7 +107,7 @@ export function AppSidebar({ userRole }: SidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {userRole === "admin" && (
+        {(userRole === "admin" || userRole === "super_admin") && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground px-4">
               Administração
@@ -147,9 +148,9 @@ export function AppSidebar({ userRole }: SidebarProps) {
             </span>
             <Badge
               variant="secondary"
-              className="w-fit text-xs capitalize"
+              className="w-fit text-xs"
             >
-              {userRole}
+              {userRole === "super_admin" ? "Super Admin" : userRole.charAt(0).toUpperCase() + userRole.slice(1)}
             </Badge>
           </div>
           <Button

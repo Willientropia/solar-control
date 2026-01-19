@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sun, Zap, TrendingUp, FileText, Shield, BarChart3 } from "lucide-react";
@@ -53,7 +54,7 @@ export default function LandingPage() {
             <span className="text-xl font-semibold">Sol Tech Energia</span>
           </div>
           <Button asChild data-testid="button-login-header">
-            <a href="/api/login">Entrar</a>
+            <Link href="/login">Entrar</Link>
           </Button>
         </div>
       </header>
@@ -75,7 +76,7 @@ export default function LandingPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Button size="lg" asChild data-testid="button-login-hero">
-                    <a href="/api/login">Começar Agora</a>
+                    <Link href="/login">Começar Agora</Link>
                   </Button>
                   <Button size="lg" variant="outline">
                     Saiba Mais
