@@ -125,6 +125,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ==================== JWT AUTHENTICATION ====================
 
+  // Test endpoint (debug)
+  app.get("/api/test", (req, res) => {
+    res.json({
+      message: "API está funcionando!",
+      timestamp: new Date().toISOString(),
+      env: {
+        hasJwtSecret: !!process.env.JWT_SECRET,
+        nodeEnv: process.env.NODE_ENV,
+      }
+    });
+  });
+
   // Register new user
   app.post("/api/auth/register", async (req, res) => {
     try {
