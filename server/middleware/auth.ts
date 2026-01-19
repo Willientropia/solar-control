@@ -1,8 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth-service';
+import * as AuthService from '../services/auth-service';
 import type { TokenPayload } from '../services/auth-service';
 import { db } from '../db';
-import { users, organizationMembers } from '../../shared/schema';
+import { users } from '../../shared/models/auth';
+import { organizationMembers } from '../../shared/models/organizations';
 import { eq, and } from 'drizzle-orm';
 
 /**
