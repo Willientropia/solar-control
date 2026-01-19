@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import LoginPage from "@/pages/login";
+import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import UsinasPage from "@/pages/usinas";
 import UsinaDetalhesPage from "@/pages/usina-detalhes";
@@ -23,6 +24,7 @@ import PrecosKwhPage from "@/pages/precos-kwh";
 import RelatoriosPage from "@/pages/relatorios";
 import AuditoriaPage from "@/pages/auditoria";
 import ConfiguracoesPage from "@/pages/configuracoes";
+import UsuariosPage from "@/pages/usuarios";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -100,14 +102,41 @@ function ProtectedRoute({
   );
 }
 
+function HomePage() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="space-y-4 w-64">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      </div>
+    );
+  }
+
+  // Se autenticado, redirecionar para dashboard
+  if (isAuthenticated) {
+    return <Redirect to="/dashboard" />;
+  }
+
+  // Se não autenticado, mostrar landing page
+  return <LandingPage />;
+}
+
 function Router() {
   return (
     <Switch>
+      {/* Rota Home - Landing Page ou redirect */}
+      <Route path="/" component={HomePage} />
+
       {/* Rota de Login */}
       <Route path="/login" component={LoginPage} />
 
       {/* Rotas Protegidas */}
-      <Route path="/">
+      <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
       </Route>
       <Route path="/usinas">
@@ -133,6 +162,9 @@ function Router() {
       </Route>
       <Route path="/precos-kwh">
         <ProtectedRoute component={PrecosKwhPage} />
+      </Route>
+      <Route path="/usuarios">
+        <ProtectedRoute component={UsuariosPage} adminOnly />
       </Route>
       <Route path="/relatorios">
         <ProtectedRoute component={RelatoriosPage} adminOnly />
