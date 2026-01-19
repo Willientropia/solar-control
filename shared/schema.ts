@@ -6,6 +6,9 @@ import { z } from "zod";
 // Re-export auth models
 export * from "./models/auth";
 
+// Re-export organizations models
+export * from "./models/organizations";
+
 // ============ USINAS (Solar Plants) ============
 export const usinas = pgTable("usinas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
