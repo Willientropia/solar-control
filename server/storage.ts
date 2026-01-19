@@ -22,6 +22,12 @@ import {
   type InsertUserProfile,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
+import {
+  organizations,
+  organizationMembers,
+  type Organization,
+  type OrganizationMember,
+} from "@shared/models/organizations";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
 
@@ -66,6 +72,22 @@ export interface IStorage {
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   upsertUserProfile(data: InsertUserProfile): Promise<UserProfile>;
   getUsersWithProfiles(): Promise<(User & { profile?: UserProfile })[]>;
+
+  // Users
+  getUser(userId: string): Promise<User | undefined>;
+
+  // Organizations
+  getOrganizations(): Promise<Organization[]>;
+  getOrganization(organizationId: string): Promise<Organization | undefined>;
+  getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  createOrganization(data: { name: string; slug: string; description?: string }): Promise<Organization>;
+  updateOrganization(organizationId: string, data: Partial<{ name: string; description: string; isActive: boolean }>): Promise<Organization | undefined>;
+
+  // Organization Members
+  getOrganizationMember(userId: string): Promise<OrganizationMember | undefined>;
+  getOrganizationMembers(organizationId: string): Promise<(OrganizationMember & { user?: User })[]>;
+  addOrganizationMember(data: { organizationId: string; userId: string; role: string }): Promise<OrganizationMember>;
+  updateOrganizationMember(organizationId: string, userId: string, data: Partial<{ role: string; isActive: boolean }>): Promise<OrganizationMember | undefined>;
 
   // Dashboard Stats
   getDashboardStats(): Promise<{
@@ -432,6 +454,118 @@ export class DatabaseStorage implements IStorage {
       ...row.users,
       profile: row.user_profiles || undefined,
     }));
+  }
+
+  // ==================== USERS ====================
+  async getUser(userId: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    return user;
+  }
+
+  // ==================== ORGANIZATIONS ====================
+  async getOrganizations(): Promise<Organization[]> {
+    return await db
+      .select()
+      .from(organizations)
+      .orderBy(desc(organizations.createdAt));
+  }
+
+  async getOrganization(organizationId: string): Promise<Organization | undefined> {
+    const [organization] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    return organization;
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    const [organization] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.slug, slug));
+    return organization;
+  }
+
+  async createOrganization(data: { name: string; slug: string; description?: string }): Promise<Organization> {
+    const [organization] = await db
+      .insert(organizations)
+      .values({
+        name: data.name,
+        slug: data.slug,
+        description: data.description,
+        isActive: true,
+      })
+      .returning();
+    return organization;
+  }
+
+  async updateOrganization(
+    organizationId: string,
+    data: Partial<{ name: string; description: string; isActive: boolean }>
+  ): Promise<Organization | undefined> {
+    const [organization] = await db
+      .update(organizations)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(organizations.id, organizationId))
+      .returning();
+    return organization;
+  }
+
+  // ==================== ORGANIZATION MEMBERS ====================
+  async getOrganizationMember(userId: string): Promise<OrganizationMember | undefined> {
+    const [member] = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, userId));
+    return member;
+  }
+
+  async getOrganizationMembers(organizationId: string): Promise<(OrganizationMember & { user?: User })[]> {
+    const result = await db
+      .select()
+      .from(organizationMembers)
+      .leftJoin(users, eq(organizationMembers.userId, users.id))
+      .where(eq(organizationMembers.organizationId, organizationId))
+      .orderBy(desc(organizationMembers.joinedAt));
+
+    return result.map((row) => ({
+      ...row.organization_members,
+      user: row.users || undefined,
+    }));
+  }
+
+  async addOrganizationMember(data: { organizationId: string; userId: string; role: string }): Promise<OrganizationMember> {
+    const [member] = await db
+      .insert(organizationMembers)
+      .values({
+        organizationId: data.organizationId,
+        userId: data.userId,
+        role: data.role,
+        isActive: true,
+      })
+      .returning();
+    return member;
+  }
+
+  async updateOrganizationMember(
+    organizationId: string,
+    userId: string,
+    data: Partial<{ role: string; isActive: boolean }>
+  ): Promise<OrganizationMember | undefined> {
+    const [member] = await db
+      .update(organizationMembers)
+      .set(data)
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.userId, userId)
+        )
+      )
+      .returning();
+    return member;
   }
 
   // ==================== DASHBOARD STATS ====================
