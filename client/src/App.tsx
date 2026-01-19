@@ -1,16 +1,16 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { UserProfile } from "@shared/schema";
 
-import LandingPage from "@/pages/landing";
+import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import UsinasPage from "@/pages/usinas";
 import UsinaDetalhesPage from "@/pages/usina-detalhes";
@@ -26,11 +26,10 @@ import ConfiguracoesPage from "@/pages/configuracoes";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/auth/profile"],
-  });
+  const { user } = useAuth();
 
-  const userRole = (profile?.role as "admin" | "operador") || "operador";
+  // Usar role do JWT
+  const userRole = (user?.role as "super_admin" | "admin" | "operador") || "operador";
 
   const style = {
     "--sidebar-width": "16rem",
@@ -61,12 +60,8 @@ function ProtectedRoute({
   adminOnly?: boolean;
 }) {
   const { user, isLoading, isAuthenticated } = useAuth();
-  const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
-    queryKey: ["/api/auth/profile"],
-    enabled: isAuthenticated,
-  });
 
-  if (isLoading || (isAuthenticated && profileLoading)) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="space-y-4 w-64">
@@ -79,10 +74,13 @@ function ProtectedRoute({
   }
 
   if (!isAuthenticated) {
-    return <LandingPage />;
+    return <Redirect to="/login" />;
   }
 
-  if (adminOnly && profile?.role !== "admin") {
+  // Verificar se é admin ou super_admin
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  if (adminOnly && !isAdmin) {
     return (
       <AuthenticatedLayout>
         <div className="flex flex-col items-center justify-center h-full p-6">
@@ -105,6 +103,10 @@ function ProtectedRoute({
 function Router() {
   return (
     <Switch>
+      {/* Rota de Login */}
+      <Route path="/login" component={LoginPage} />
+
+      {/* Rotas Protegidas */}
       <Route path="/">
         <ProtectedRoute component={DashboardPage} />
       </Route>
@@ -149,10 +151,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
