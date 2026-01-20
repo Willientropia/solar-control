@@ -208,17 +208,16 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
     },
     onSuccess: (data) => {
       setIsGenerating(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
 
       console.log('PDF gerado com sucesso:', data);
 
-      // Download the PDF
+      // Download the PDF (always opens in new tab)
       if (data.pdfUrl) {
         window.open(data.pdfUrl, "_blank");
       }
 
-      toast({ title: "PDF gerado com sucesso" });
-      onRefresh?.();
+      toast({ title: "PDF baixado com sucesso" });
+      // Não precisa invalidar queries ou refresh, pois não salvamos no DB
     },
     onError: (error: Error) => {
       setIsGenerating(false);
@@ -378,32 +377,17 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
               </Button>
             )}
 
-            {/* Generate or download discounted fatura */}
+            {/* Generate discounted fatura (always on-demand) */}
             {!isUsoProprio && (
-              <>
-                {fatura.faturaGeradaUrl ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                  >
-                    <a href={fatura.faturaGeradaUrl} download target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4 mr-2" />
-                      Baixar c/ Desconto
-                    </a>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => generatePdfMutation.mutate()}
-                    disabled={isGenerating}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    {isGenerating ? "Gerando..." : "Gerar c/ Desconto"}
-                  </Button>
-                )}
-              </>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generatePdfMutation.mutate()}
+                disabled={isGenerating}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {isGenerating ? "Gerando..." : "Baixar c/ Desconto"}
+              </Button>
             )}
 
             {/* Expiration warning */}
