@@ -64,6 +64,8 @@ import {
 import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
+import { FaturaFlowIndicators } from "@/components/fatura-flow-indicators";
+import { useAuth } from "@/hooks/use-auth";
 
 function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): string[] {
   const months = new Set([
@@ -137,7 +139,11 @@ export default function UsinaDetalhesPage() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const currentMonth = getCurrentMonthRef();
+
+  const userRole = (user?.role as "super_admin" | "admin" | "operador") || "operador";
+  const isOperador = userRole === "operador";
 
   const [editingFatura, setEditingFatura] = useState<(Fatura & { cliente?: Cliente }) | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
@@ -663,13 +669,22 @@ export default function UsinaDetalhesPage() {
                     <TableHead>Mês Ref.</TableHead>
                     <TableHead className="text-right">Consumo SCEE</TableHead>
                     <TableHead className="text-right">Valor c/ Desconto</TableHead>
-                    <TableHead className="text-right">Lucro</TableHead>
-                    <TableHead>Status</TableHead>
+                    {!isOperador && <TableHead className="text-right">Lucro</TableHead>}
+                    <TableHead>Fatura Concessionária</TableHead>
+                    <TableHead>Fatura c/ Desconto</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {faturasOrdenadas.slice(0, 50).map((fatura) => (
+                  {faturasOrdenadas.slice(0, 50).map((fatura) => {
+                    const hasUpload = !!fatura.arquivoPdfUrl;
+                    const isPaidToConcessionaria = fatura.status === "pago" || fatura.status === "pagamento_pendente_confirmacao";
+                    const faturaClienteGerada = !!fatura.faturaClienteGeradaAt;
+                    const faturaClienteEnviada = !!fatura.faturaClienteEnviadaAt;
+                    const faturaClienteRecebida = !!fatura.faturaClienteRecebidaAt;
+                    const isUsoProprio = !fatura.cliente?.isPagante;
+
+                    return (
                     <TableRow key={fatura.id}>
                       <TableCell>{fatura.cliente?.nome || "-"}</TableCell>
                       <TableCell className="font-mono text-sm">
@@ -685,21 +700,37 @@ export default function UsinaDetalhesPage() {
                       <TableCell className="text-right font-mono">
                         {formatCurrency(fatura.valorComDesconto)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-green-600">
-                        {formatCurrency(fatura.lucro)}
+                      {!isOperador && (
+                        <TableCell className="text-right font-mono text-green-600">
+                          {formatCurrency(fatura.lucro)}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={hasUpload ? "default" : "secondary"}>
+                            {hasUpload ? "Upload" : "Pendente"}
+                          </Badge>
+                          <Badge variant={isPaidToConcessionaria ? "default" : "secondary"}>
+                            {isPaidToConcessionaria ? "Pago" : "A Pagar"}
+                          </Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            fatura.status === "processada"
-                              ? "default"
-                              : fatura.status === "enviada"
-                              ? "secondary"
-                              : "outline"
-                          }
-                        >
-                          {fatura.status}
-                        </Badge>
+                        {isUsoProprio ? (
+                          <Badge variant="outline">Não aplicável</Badge>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Badge variant={faturaClienteGerada ? "default" : "secondary"}>
+                              {faturaClienteGerada ? "Gerada" : "Pendente"}
+                            </Badge>
+                            <Badge variant={faturaClienteEnviada ? "default" : "secondary"}>
+                              {faturaClienteEnviada ? "Enviada" : "A Enviar"}
+                            </Badge>
+                            <Badge variant={faturaClienteRecebida ? "default" : "secondary"}>
+                              {faturaClienteRecebida ? "Recebida" : "A Receber"}
+                            </Badge>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -728,7 +759,8 @@ export default function UsinaDetalhesPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </Card>
@@ -1062,27 +1094,77 @@ export default function UsinaDetalhesPage() {
                   </div>
                 ))}
 
-                {/* Status field */}
-                <div className="space-y-3 pt-2 border-t">
-                  <h4 className="font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border bg-slate-50 dark:bg-slate-950/30 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
-                    Status
-                  </h4>
-                  <div className="space-y-2 pl-2">
-                    <Label htmlFor="edit-status">Status da Fatura</Label>
-                    <Select
-                      value={editFormData.status || "pendente"}
-                      onValueChange={(value) => handleEditFieldChange("status", value)}
-                    >
-                      <SelectTrigger id="edit-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pendente">Pendente</SelectItem>
-                        <SelectItem value="processada">Processada</SelectItem>
-                        <SelectItem value="enviada">Enviada</SelectItem>
-                      </SelectContent>
-                    </Select>
+                {/* Status fields */}
+                <div className="space-y-4 pt-2 border-t">
+                  {/* Fatura da Concessionária */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                      Fatura da Concessionária
+                    </h4>
+                    <div className="space-y-2 pl-2">
+                      <Label htmlFor="edit-status">Status de Pagamento</Label>
+                      <Select
+                        value={editFormData.status || "pendente"}
+                        onValueChange={(value) => handleEditFieldChange("status", value)}
+                      >
+                        <SelectTrigger id="edit-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendente">Pendente</SelectItem>
+                          <SelectItem value="pagamento_pendente_confirmacao">Pagamento Pendente Confirmação</SelectItem>
+                          <SelectItem value="pago">Pago</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+
+                  {/* Fatura com Desconto - apenas para clientes pagantes */}
+                  {editingFatura?.cliente?.isPagante && (
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300">
+                        Fatura com Desconto
+                      </h4>
+                      <div className="space-y-3 pl-2">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-faturaClienteGerada"
+                            checked={!!editFormData.faturaClienteGeradaAt}
+                            onChange={(e) => handleEditFieldChange("faturaClienteGeradaAt", e.target.checked ? new Date().toISOString() : "")}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <Label htmlFor="edit-faturaClienteGerada" className="cursor-pointer font-normal">
+                            Fatura Gerada
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-faturaClienteEnviada"
+                            checked={!!editFormData.faturaClienteEnviadaAt}
+                            onChange={(e) => handleEditFieldChange("faturaClienteEnviadaAt", e.target.checked ? new Date().toISOString() : "")}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <Label htmlFor="edit-faturaClienteEnviada" className="cursor-pointer font-normal">
+                            Fatura Enviada ao Cliente
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-faturaClienteRecebida"
+                            checked={!!editFormData.faturaClienteRecebidaAt}
+                            onChange={(e) => handleEditFieldChange("faturaClienteRecebidaAt", e.target.checked ? new Date().toISOString() : "")}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <Label htmlFor="edit-faturaClienteRecebida" className="cursor-pointer font-normal">
+                            Pagamento Recebido do Cliente
+                          </Label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </TooltipProvider>
