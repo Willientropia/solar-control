@@ -58,6 +58,7 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
+import { MonthPicker } from "@/components/month-picker";
 
 interface ClienteDetalhes extends Cliente {
   usina?: Usina;
@@ -207,25 +208,6 @@ export default function ClienteDetalhesPage() {
   const faturas = cliente.faturas || [];
   const saldoAtual = parseToNumber(cliente.saldoAtual || "0");
   const mesesDuracao = parseToNumber(cliente.mesesDuracaoSaldo || "0");
-
-  // Helper function to compare months in "Jan/2025" format
-  const compareMonths = (mesA: string, mesB: string): number => {
-    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const [mesTextA, anoA] = mesA.split('/');
-    const [mesTextB, anoB] = mesB.split('/');
-    const yearDiff = parseInt(anoA) - parseInt(anoB);
-    if (yearDiff !== 0) return yearDiff;
-    return meses.indexOf(mesTextA) - meses.indexOf(mesTextB);
-  };
-
-  // Filter faturas for month selectors based on selections
-  const faturasParaMesInicial = mesFinal
-    ? faturas.filter(f => compareMonths(f.mesReferencia, mesFinal) <= 0)
-    : faturas;
-
-  const faturasParaMesFinal = mesInicial
-    ? faturas.filter(f => compareMonths(f.mesReferencia, mesInicial) >= 0)
-    : faturas;
 
   return (
     <div className="p-6 space-y-6">
@@ -422,33 +404,19 @@ export default function ClienteDetalhesPage() {
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <Label>Mês Inicial</Label>
-                <Select value={mesInicial} onValueChange={setMesInicial}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o mês inicial" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {faturasParaMesInicial.map((fatura) => (
-                      <SelectItem key={`inicial-${fatura.id}`} value={fatura.mesReferencia}>
-                        {fatura.mesReferencia}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <MonthPicker
+                  value={mesInicial}
+                  onChange={setMesInicial}
+                  placeholder="Selecione o mês inicial"
+                />
               </div>
               <div className="flex-1">
                 <Label>Mês Final</Label>
-                <Select value={mesFinal} onValueChange={setMesFinal}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o mês final" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {faturasParaMesFinal.map((fatura) => (
-                      <SelectItem key={`final-${fatura.id}`} value={fatura.mesReferencia}>
-                        {fatura.mesReferencia}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <MonthPicker
+                  value={mesFinal}
+                  onChange={setMesFinal}
+                  placeholder="Selecione o mês final"
+                />
               </div>
               <div className="flex items-end">
                 <Button
