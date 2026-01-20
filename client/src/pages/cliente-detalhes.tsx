@@ -627,8 +627,8 @@ export default function ClienteDetalhesPage() {
                 <div>
                   <Label>Valor Contratado (kWh)</Label>
                   <Input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    placeholder="Ex: 100,00"
                     value={editFormData.valorContratadoKwh || ""}
                     onChange={(e) => updateEditFormField("valorContratadoKwh", e.target.value)}
                   />
@@ -636,8 +636,8 @@ export default function ClienteDetalhesPage() {
                 <div>
                   <Label>% Envio Crédito</Label>
                   <Input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    placeholder="Ex: 50,00"
                     value={editFormData.porcentagemEnvioCredito || ""}
                     onChange={(e) => updateEditFormField("porcentagemEnvioCredito", e.target.value)}
                   />
@@ -645,8 +645,8 @@ export default function ClienteDetalhesPage() {
                 <div>
                   <Label>Desconto (%)</Label>
                   <Input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    placeholder="Ex: 15,00"
                     value={editFormData.desconto || ""}
                     onChange={(e) => updateEditFormField("desconto", e.target.value)}
                     disabled={!editFormData.isPagante}
