@@ -8,3 +8,9 @@ vite.config.ts.*
 uploads/
 .local/
 attached_assets/
+
+# Backups e Logs
+backups/
+*.sql
+*.sql.gz
+*.log
