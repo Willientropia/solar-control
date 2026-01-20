@@ -37,7 +37,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isReplit, // Only secure in Replit (assuming https)
+      // Secure true se estiver no Replit OU em Produção (que roda HTTPS)
+      secure: isReplit || process.env.NODE_ENV === "production", 
       maxAge: sessionTtl,
     },
   });
