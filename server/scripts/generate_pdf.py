@@ -53,11 +53,38 @@ def generate_invoice_pdf(data, output_path):
 
     energia_ativa_quantidade = consumo_scee + consumo_nao_compensado
     energia_ativa_valor = energia_ativa_quantidade * preco_kwh
+
     # Taxa Mínima = Valor total - ((Consumo não compensado * preço do kwh) + (consumoSCEE * preço do fio B))
     # Onde FIOB = consumoSCEE * preço do fio B
     fio_b_valor = consumo_scee * preco_fio_b
-    taxa_minima = valor_total - ((consumo_nao_compensado * preco_kwh) + fio_b_valor)
+    consumo_nao_compensado_valor = consumo_nao_compensado * preco_kwh
+    taxa_minima = valor_total - (consumo_nao_compensado_valor + fio_b_valor)
     valor_calculado = energia_ativa_valor + taxa_minima
+
+    # Debug: Mostrar cálculo da taxa mínima
+    print("=" * 60, file=sys.stderr)
+    print("DEBUG - CÁLCULO DA TAXA MÍNIMA", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print(f"Valores recebidos:", file=sys.stderr)
+    print(f"  Consumo SCEE: {consumo_scee} kWh", file=sys.stderr)
+    print(f"  Consumo Não Compensado: {consumo_nao_compensado} kWh", file=sys.stderr)
+    print(f"  Valor Total: R$ {valor_total:.2f}", file=sys.stderr)
+    print(f"  Preço kWh: R$ {preco_kwh:.6f}", file=sys.stderr)
+    print(f"  Preço Fio B: R$ {preco_fio_b:.6f}", file=sys.stderr)
+    print(f"  Contribuição Iluminação: R$ {contribuicao_iluminacao:.2f}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f"Cálculos intermediários:", file=sys.stderr)
+    print(f"  FIOB = Consumo SCEE × Preço Fio B", file=sys.stderr)
+    print(f"  FIOB = {consumo_scee} × {preco_fio_b:.6f} = R$ {fio_b_valor:.2f}", file=sys.stderr)
+    print(f"  Consumo Não Compensado × Preço kWh = {consumo_nao_compensado} × {preco_kwh:.6f} = R$ {consumo_nao_compensado_valor:.2f}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f"Fórmula da Taxa Mínima:", file=sys.stderr)
+    print(f"  Taxa Mínima = Valor Total - (Consumo Não Compensado × Preço kWh + FIOB)", file=sys.stderr)
+    print(f"  Taxa Mínima = {valor_total:.2f} - ({consumo_nao_compensado_valor:.2f} + {fio_b_valor:.2f})", file=sys.stderr)
+    print(f"  Taxa Mínima = {valor_total:.2f} - {consumo_nao_compensado_valor + fio_b_valor:.2f}", file=sys.stderr)
+    print(f"  Taxa Mínima = R$ {taxa_minima:.2f}", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    print("", file=sys.stderr)
     
     tem_desconto = economia > 0
     
