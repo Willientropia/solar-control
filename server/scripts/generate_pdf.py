@@ -52,7 +52,8 @@ def generate_invoice_pdf(data, output_path):
     
     energia_ativa_quantidade = consumo_scee + consumo_nao_compensado
     energia_ativa_valor = energia_ativa_quantidade * preco_kwh
-    taxa_minima = contribuicao_iluminacao
+    # Taxa Mínima = Valor total - ((Consumo não compensado * preço do kwh) + fiob R$)
+    taxa_minima = valor_total - ((consumo_nao_compensado * preco_kwh) + contribuicao_iluminacao)
     valor_calculado = energia_ativa_valor + taxa_minima
     
     tem_desconto = economia > 0
