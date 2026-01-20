@@ -55,6 +55,7 @@ export interface UserWithOrganization extends User {
   organizationId: string;
   role: string;
   organizationName: string;
+  organizationSlug: string;
 }
 
 // ============ FUNÇÕES DE SENHA ============
@@ -144,6 +145,7 @@ export async function login(data: LoginRequest): Promise<{
       organizationId: organizationMembers.organizationId,
       role: organizationMembers.role,
       organizationName: organizations.name,
+      organizationSlug: organizations.slug,
     })
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
@@ -179,6 +181,7 @@ export async function login(data: LoginRequest): Promise<{
       organizationId: membership.organizationId,
       role: membership.role,
       organizationName: membership.organizationName,
+      organizationSlug: membership.organizationSlug,
     },
     tokens,
   };
@@ -223,6 +226,7 @@ export async function register(data: RegisterRequest): Promise<{
   // Determinar organização
   let organizationId = data.organizationId;
   let organizationName = '';
+  let organizationSlug = '';
   let role = 'operador';
 
   if (!organizationId) {
@@ -241,6 +245,7 @@ export async function register(data: RegisterRequest): Promise<{
 
     organizationId = newOrg.id;
     organizationName = newOrg.name;
+    organizationSlug = newOrg.slug;
     role = 'admin'; // Criador da organização é admin
   } else {
     // Buscar nome da organização
@@ -255,6 +260,7 @@ export async function register(data: RegisterRequest): Promise<{
     }
 
     organizationName = org.name;
+    organizationSlug = org.slug;
   }
 
   // Adicionar usuário à organização
@@ -279,6 +285,7 @@ export async function register(data: RegisterRequest): Promise<{
       organizationId,
       role,
       organizationName,
+      organizationSlug,
     },
     tokens,
   };
