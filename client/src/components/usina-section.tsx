@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Zap, CheckCircle, Clock, XCircle } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { ChevronDown, ChevronUp, Zap, CheckCircle, Clock, XCircle, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FaturaStatusCard } from "./fatura-status-card";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { Usina, Cliente, Fatura } from "@shared/schema";
 
 interface UsinaSectionProps {
@@ -17,6 +20,69 @@ interface UsinaSectionProps {
 
 export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura }: UsinaSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const { toast } = useToast();
+
+  // Get mesReferencia from first fatura (all faturas in this view should be from the same month)
+  const mesReferencia = faturas.length > 0 ? faturas[0].mesReferencia : null;
+
+  // Count faturas com desconto (clientes pagantes)
+  const faturasComDesconto = faturas.filter(f => {
+    const cliente = clientes.find(c => c.id === f.clienteId);
+    return cliente?.isPagante === true;
+  }).length;
+
+  // Mutation to download ZIP
+  const downloadZipMutation = useMutation({
+    mutationFn: async () => {
+      if (!mesReferencia) {
+        throw new Error("Nenhuma fatura encontrada para baixar");
+      }
+
+      const response = await fetch('/api/faturas/download-usina-zip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          usinaId: usina.id,
+          mesReferencia: mesReferencia,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao gerar ZIP');
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faturas_${mesReferencia.replace('/', '_')}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: () => {
+      toast({
+        title: "ZIP gerado com sucesso!",
+        description: "As faturas foram baixadas em um arquivo ZIP."
+      });
+      onRefresh?.();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erro ao gerar ZIP",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Get unique clients for this usina with their faturas
   const clientesData = clientes
@@ -104,6 +170,31 @@ export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura
                 </Badge>
               )}
             </div>
+
+            {/* Download ZIP button */}
+            {faturasComDesconto > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadZipMutation.mutate();
+                }}
+                disabled={downloadZipMutation.isPending}
+              >
+                {downloadZipMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Gerando ZIP...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Baixar Todas ({faturasComDesconto})
+                  </>
+                )}
+              </Button>
+            )}
 
             <Button variant="ghost" size="icon">
               {isExpanded ? (

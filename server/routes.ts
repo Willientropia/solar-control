@@ -1661,6 +1661,158 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Download all faturas com desconto de uma usina em ZIP
+  app.post("/api/faturas/download-usina-zip", isAuthenticated, async (req: any, res) => {
+    try {
+      const { usinaId, mesReferencia } = req.body;
+
+      if (!usinaId || !mesReferencia) {
+        return res.status(400).json({ message: "usinaId e mesReferencia são obrigatórios" });
+      }
+
+      console.log(`[ZIP Download] Iniciando geração de ZIP para usina ${usinaId}, mês ${mesReferencia}`);
+
+      // Buscar todas as faturas da usina para o mês
+      const allFaturas = await storage.getFaturas();
+      const allClientes = await storage.getClientes();
+
+      // Filtrar faturas da usina e mês, apenas clientes pagantes
+      const faturas = allFaturas.filter((f: any) => {
+        const cliente = allClientes.find((c: any) => c.id === f.clienteId);
+        return cliente?.usinaId === usinaId &&
+               f.mesReferencia === mesReferencia &&
+               cliente?.isPagante === true;
+      });
+
+      if (faturas.length === 0) {
+        return res.status(404).json({ message: "Nenhuma fatura com desconto encontrada para esta usina/mês" });
+      }
+
+      console.log(`[ZIP Download] Encontradas ${faturas.length} faturas para gerar`);
+
+      const { spawn } = await import("child_process");
+      const archiver = (await import("archiver")).default;
+
+      const outputDir = path.join(process.cwd(), "uploads", "faturas_geradas");
+      await fsPromises.mkdir(outputDir, { recursive: true });
+
+      // Gerar todos os PDFs
+      const pdfPaths: string[] = [];
+      const pdfPromises = faturas.map(async (fatura: any) => {
+        const cliente = allClientes.find((c: any) => c.id === fatura.clienteId);
+        if (!cliente) return null;
+
+        const outputFilename = `fatura_${cliente.unidadeConsumidora}_${fatura.mesReferencia.replace("/", "_")}.pdf`;
+        const outputPath = path.join(outputDir, outputFilename);
+
+        // Verificar se o PDF já existe
+        try {
+          await fsPromises.access(outputPath);
+          console.log(`[ZIP Download] PDF já existe: ${outputFilename}`);
+          return { path: outputPath, filename: outputFilename };
+        } catch {
+          // PDF não existe, precisa gerar
+          console.log(`[ZIP Download] Gerando PDF: ${outputFilename}`);
+        }
+
+        const pdfData = {
+          nomeCliente: cliente.nome,
+          enderecoCliente: cliente.enderecoCompleto || cliente.endereco || "",
+          unidadeConsumidora: cliente.unidadeConsumidora,
+          mesReferencia: fatura.mesReferencia,
+          dataVencimento: fatura.dataVencimento || "",
+          consumoScee: fatura.consumoScee,
+          consumoNaoCompensado: fatura.consumoNaoCompensado,
+          valorTotal: fatura.valorTotal,
+          valorSemDesconto: fatura.valorSemDesconto,
+          valorComDesconto: fatura.valorComDesconto,
+          economia: fatura.economia,
+          contribuicaoIluminacao: fatura.contribuicaoIluminacao,
+          precoKwh: fatura.precoKwh,
+          precoFioB: fatura.precoFioB,
+        };
+
+        return new Promise<{ path: string; filename: string } | null>((resolve, reject) => {
+          const pythonProcess = spawn("python3", [
+            path.join(process.cwd(), "server", "scripts", "generate_pdf.py"),
+            JSON.stringify(pdfData),
+            outputPath,
+          ]);
+
+          let stdout = "";
+          let stderr = "";
+
+          pythonProcess.stdout.on("data", (data) => {
+            stdout += data.toString();
+          });
+
+          pythonProcess.stderr.on("data", (data) => {
+            stderr += data.toString();
+          });
+
+          pythonProcess.on("close", async (code) => {
+            if (code !== 0) {
+              console.error(`[ZIP Download] Erro ao gerar PDF para ${cliente.nome}:`, stderr);
+              resolve(null);
+              return;
+            }
+
+            try {
+              const result = JSON.parse(stdout);
+              if (result.success) {
+                // Atualizar fatura com URL do PDF gerado
+                await storage.updateFatura(fatura.id, {
+                  faturaGeradaUrl: `/uploads/faturas_geradas/${outputFilename}`,
+                  faturaClienteGeradaAt: new Date().toISOString(),
+                });
+                resolve({ path: outputPath, filename: outputFilename });
+              } else {
+                console.error(`[ZIP Download] Erro no resultado: ${result.error}`);
+                resolve(null);
+              }
+            } catch (e) {
+              console.error(`[ZIP Download] Erro ao parsear resultado:`, e);
+              resolve(null);
+            }
+          });
+        });
+      });
+
+      const results = await Promise.all(pdfPromises);
+      const validPdfs = results.filter((r): r is { path: string; filename: string } => r !== null);
+
+      if (validPdfs.length === 0) {
+        return res.status(500).json({ message: "Nenhum PDF foi gerado com sucesso" });
+      }
+
+      console.log(`[ZIP Download] ${validPdfs.length} PDFs prontos para ZIP`);
+
+      // Criar ZIP
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      const zipFilename = `faturas_${mesReferencia.replace("/", "_")}_${Date.now()}.zip`;
+
+      res.attachment(zipFilename);
+      archive.pipe(res);
+
+      // Adicionar todos os PDFs ao ZIP
+      for (const pdf of validPdfs) {
+        archive.file(pdf.path, { name: pdf.filename });
+      }
+
+      archive.on("error", (err) => {
+        console.error("[ZIP Download] Erro ao criar ZIP:", err);
+        res.status(500).json({ message: "Erro ao criar ZIP", error: err.message });
+      });
+
+      await archive.finalize();
+      console.log(`[ZIP Download] ZIP finalizado: ${zipFilename}`);
+
+    } catch (error: any) {
+      console.error("[ZIP Download] Erro:", error);
+      res.status(500).json({ message: "Erro ao gerar ZIP", error: error.message });
+    }
+  });
+
   // Generate cliente economia relatório
   app.post("/api/clientes/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
     try {
