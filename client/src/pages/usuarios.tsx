@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,7 @@ export default function UsuariosPage() {
   const [editError, setEditError] = useState('');
 
   // Buscar membros da organização
-  const { data: members, isLoading } = useQuery<UserData[]>({
+  const { data: members, isLoading, refetch } = useQuery<UserData[]>({
     queryKey: ['/api/organizations', currentUser?.organization?.id, 'members'],
     queryFn: async () => {
       if (!currentUser?.organization?.id) {
@@ -112,6 +112,13 @@ export default function UsuariosPage() {
     },
     enabled: !!currentUser?.organization?.id,
   });
+
+  // Refetch quando o currentUser mudar (fix para carregar usuarios após login)
+  useEffect(() => {
+    if (currentUser?.organization?.id) {
+      refetch();
+    }
+  }, [currentUser?.organization?.id, refetch]);
 
   // Mutation para criar usuário
   const createUserMutation = useMutation({

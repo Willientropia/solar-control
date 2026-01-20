@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +10,6 @@ import { Loader2, Sun, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
   const { login, isLoading } = useAuthContext();
 
   const [email, setEmail] = useState('');
@@ -29,10 +27,6 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-
-      // Invalidar todas as queries para forçar reload após login
-      queryClient.invalidateQueries();
-
       setLocation('/');
     } catch (err: any) {
       setError(err.message || 'Falha ao fazer login. Verifique suas credenciais.');
