@@ -160,6 +160,42 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const generatePdfMutation = useMutation({
     mutationFn: async () => {
       setIsGenerating(true);
+
+      // Debug: Mostrar valores da fatura antes de gerar PDF
+      const consumoScee = parseFloat(fatura.consumoScee || '0');
+      const consumoNaoCompensado = parseFloat(fatura.consumoNaoCompensado || '0');
+      const valorTotal = parseFloat(fatura.valorTotal || '0');
+      const precoKwh = parseFloat(fatura.precoKwh || '0');
+      const precoFioB = parseFloat(fatura.precoFioB || '0');
+      const contribuicaoIluminacao = parseFloat(fatura.contribuicaoIluminacao || '0');
+
+      console.log('============================================================');
+      console.log('DEBUG - CÁLCULO DA TAXA MÍNIMA (FRONTEND)');
+      console.log('============================================================');
+      console.log('Valores da fatura:');
+      console.log('  Consumo SCEE:', consumoScee, 'kWh');
+      console.log('  Consumo Não Compensado:', consumoNaoCompensado, 'kWh');
+      console.log('  Valor Total:', `R$ ${valorTotal.toFixed(2)}`);
+      console.log('  Preço kWh:', `R$ ${precoKwh.toFixed(6)}`);
+      console.log('  Preço Fio B:', `R$ ${precoFioB.toFixed(6)}`);
+      console.log('  Contribuição Iluminação:', `R$ ${contribuicaoIluminacao.toFixed(2)}`);
+      console.log('');
+      console.log('Cálculos intermediários:');
+      const fiobValor = consumoScee * precoFioB;
+      const consumoNaoCompensadoValor = consumoNaoCompensado * precoKwh;
+      console.log('  FIOB = Consumo SCEE × Preço Fio B');
+      console.log(`  FIOB = ${consumoScee} × ${precoFioB.toFixed(6)} = R$ ${fiobValor.toFixed(2)}`);
+      console.log(`  Consumo Não Compensado × Preço kWh = ${consumoNaoCompensado} × ${precoKwh.toFixed(6)} = R$ ${consumoNaoCompensadoValor.toFixed(2)}`);
+      console.log('');
+      console.log('Fórmula da Taxa Mínima:');
+      console.log('  Taxa Mínima = Valor Total - (Consumo Não Compensado × Preço kWh + FIOB)');
+      const taxaMinima = valorTotal - (consumoNaoCompensadoValor + fiobValor);
+      console.log(`  Taxa Mínima = ${valorTotal.toFixed(2)} - (${consumoNaoCompensadoValor.toFixed(2)} + ${fiobValor.toFixed(2)})`);
+      console.log(`  Taxa Mínima = ${valorTotal.toFixed(2)} - ${(consumoNaoCompensadoValor + fiobValor).toFixed(2)}`);
+      console.log(`  Taxa Mínima = R$ ${taxaMinima.toFixed(2)}`);
+      console.log('============================================================');
+      console.log('');
+
       const response = await fetch(`/api/faturas/${fatura.id}/generate-pdf`, {
         method: "POST",
         credentials: "include",
@@ -173,6 +209,8 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
     onSuccess: (data) => {
       setIsGenerating(false);
       queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+
+      console.log('PDF gerado com sucesso:', data);
 
       // Download the PDF
       if (data.pdfUrl) {
