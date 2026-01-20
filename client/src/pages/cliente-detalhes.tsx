@@ -157,11 +157,11 @@ export default function ClienteDetalhesPage() {
         enderecoCompleto: cliente.enderecoCompleto || "",
         unidadeConsumidora: cliente.unidadeConsumidora,
         usinaId: cliente.usinaId,
-        desconto: formatNumber(cliente.desconto),
+        desconto: cliente.desconto || "0",
         isPagante: cliente.isPagante,
         numeroContrato: cliente.numeroContrato || "",
-        valorContratadoKwh: cliente.valorContratadoKwh ? formatNumber(cliente.valorContratadoKwh) : "",
-        porcentagemEnvioCredito: cliente.porcentagemEnvioCredito ? formatNumber(cliente.porcentagemEnvioCredito) : "",
+        valorContratadoKwh: cliente.valorContratadoKwh || "",
+        porcentagemEnvioCredito: cliente.porcentagemEnvioCredito || "",
       });
       setIsEditDialogOpen(true);
     }
