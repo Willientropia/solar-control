@@ -1455,7 +1455,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } else if (key === "mesReferencia" && typeof value === "string") {
           normalizedData[key] = normalizeMonthReference(value);
         } else {
-          normalizedData[key] = value;
+          // Handle empty strings as null to prevent timestamp errors
+          if (typeof value === "string" && value.trim() === "") {
+            normalizedData[key] = null;
+          } else {
+            normalizedData[key] = value;
+          }
         }
       }
       
@@ -1476,39 +1481,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Log dos dados salvos (para debug)
       console.log(`[Fatura Edit] Fatura ID: ${faturaId} atualizada com sucesso`);
-      console.log(`[Fatura Edit] Campos atualizados:`, Object.keys(updateData));
+      console.log(`[Fatura Edit] Campos recebidos:`, Object.keys(updateData));
       console.log(`[Fatura Edit] Valores salvos:`, {
         consumoScee: fatura.consumoScee,
-        precoKwh: fatura.precoKwh,
+        energiaInjetada: fatura.energiaInjetada,
+        saldoKwh: fatura.saldoKwh,
+        consumoNaoCompensado: fatura.consumoNaoCompensado,
         valorTotal: fatura.valorTotal,
         valorSemDesconto: fatura.valorSemDesconto,
         valorComDesconto: fatura.valorComDesconto,
-        economia: fatura.economia
+        economia: fatura.economia,
+        lucro: fatura.lucro
       });
-
-      // Se valores financeiros foram editados, invalidar PDF gerado para forçar nova geração
-      const financialFields = ['consumoScee', 'precoKwh', 'valorTotal', 'valorSemDesconto', 'valorComDesconto', 'economia', 'lucro', 'precoFioB', 'precoAdcBandeira', 'contribuicaoIluminacao'];
-      const hasFinancialChanges = Object.keys(updateData).some(key => financialFields.includes(key));
-
-      if (hasFinancialChanges && fatura.faturaGeradaUrl) {
-        console.log(`[Fatura Edit] Valores financeiros foram alterados. Invalidando PDF gerado.`);
-        await storage.updateFatura(faturaId, {
-          faturaGeradaUrl: null,
-          faturaClienteGeradaAt: null
-        });
-        // Buscar fatura atualizada para retornar
-        const faturaAtualizada = await storage.getFatura(faturaId);
-        if (faturaAtualizada) {
-          await logAction(req.user.claims.sub, "editar", "fatura", faturaAtualizada.id, { fields: Object.keys(updateData) });
-          return res.json(faturaAtualizada);
-        }
-      }
 
       await logAction(req.user.claims.sub, "editar", "fatura", fatura.id, { fields: Object.keys(updateData) });
       res.json(fatura);
     } catch (error) {
       console.error("Error updating fatura:", error);
-      res.status(500).json({ message: "Failed to update fatura" });
+      const errorMessage = error instanceof Error ? error.message : "Failed to update fatura";
+      res.status(500).json({ message: errorMessage });
     }
   });
 

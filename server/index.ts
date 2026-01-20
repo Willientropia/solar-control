@@ -64,6 +64,8 @@ app.use((req, res, next) => {
   next();
 });
 
+import { setupCronJobs } from "./cron";
+
 // Trigger restart
 (async () => {
   try {
@@ -74,6 +76,9 @@ app.use((req, res, next) => {
   }
 
   await registerRoutes(httpServer, app);
+
+  // Initialize Cron Jobs
+  setupCronJobs();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
