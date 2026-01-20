@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Users, Edit, Trash2 } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Search } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { formatNumber, parseToNumber } from "@/lib/utils";
@@ -69,6 +70,8 @@ export default function ClientesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState<ClienteWithUsina | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
 
   const { data: clientes = [], isLoading } = useQuery<ClienteWithUsina[]>({
     queryKey: ["/api/clientes"],
@@ -207,6 +210,34 @@ export default function ClientesPage() {
     }
   };
 
+  // Filter and sort clients
+  const filteredAndSortedClientes = clientes
+    .filter((cliente) => {
+      // Filter by search term (nome, UC, or contract number)
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch =
+        cliente.nome.toLowerCase().includes(searchLower) ||
+        cliente.unidadeConsumidora.toLowerCase().includes(searchLower) ||
+        (cliente.numeroContrato && cliente.numeroContrato.toLowerCase().includes(searchLower));
+
+      // Filter by usina
+      const matchesUsina = selectedUsinaId === "all" || cliente.usinaId === selectedUsinaId;
+
+      return matchesSearch && matchesUsina;
+    })
+    .sort((a, b) => {
+      // Sort by contract number
+      const aNum = a.numeroContrato || "";
+      const bNum = b.numeroContrato || "";
+      return aNum.localeCompare(bNum, undefined, { numeric: true });
+    });
+
+  // Group clients by usina for tabs
+  const clientesByUsina = usinas.map((usina) => ({
+    usina,
+    clientes: filteredAndSortedClientes.filter((c) => c.usinaId === usina.id),
+  }));
+
   const columns = [
     {
       key: "nome",
@@ -225,6 +256,13 @@ export default function ClientesPage() {
             </div>
           </div>
         </Link>
+      ),
+    },
+    {
+      key: "contrato",
+      header: "Contrato",
+      cell: (cliente: ClienteWithUsina) => (
+        <span className="font-mono text-sm">{cliente.numeroContrato || "-"}</span>
       ),
     },
     {
@@ -620,6 +658,23 @@ export default function ClientesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Search bar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar por nome, UC ou número de contrato..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabs by Usina */}
       {clientes.length === 0 && !isLoading ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -637,13 +692,46 @@ export default function ClientesPage() {
           </CardContent>
         </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={clientes}
-          isLoading={isLoading}
-          getRowKey={(cliente) => cliente.id}
-          emptyMessage="Nenhum cliente encontrado"
-        />
+        <Tabs defaultValue="all" value={selectedUsinaId} onValueChange={setSelectedUsinaId}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="all">
+              Todas ({filteredAndSortedClientes.length})
+            </TabsTrigger>
+            {usinas.map((usina) => {
+              const usinaClientes = filteredAndSortedClientes.filter((c) => c.usinaId === usina.id);
+              return (
+                <TabsTrigger key={usina.id} value={usina.id}>
+                  {usina.nome} ({usinaClientes.length})
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          <TabsContent value="all">
+            <DataTable
+              columns={columns}
+              data={filteredAndSortedClientes}
+              isLoading={isLoading}
+              getRowKey={(cliente) => cliente.id}
+              emptyMessage="Nenhum cliente encontrado"
+            />
+          </TabsContent>
+
+          {usinas.map((usina) => {
+            const usinaClientes = filteredAndSortedClientes.filter((c) => c.usinaId === usina.id);
+            return (
+              <TabsContent key={usina.id} value={usina.id}>
+                <DataTable
+                  columns={columns}
+                  data={usinaClientes}
+                  isLoading={isLoading}
+                  getRowKey={(cliente) => cliente.id}
+                  emptyMessage="Nenhum cliente encontrado nesta usina"
+                />
+              </TabsContent>
+            );
+          })}
+        </Tabs>
       )}
     </div>
   );

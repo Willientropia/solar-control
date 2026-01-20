@@ -433,10 +433,26 @@ export default function UsinaDetalhesPage() {
   // Get available months for report selection
   const availableMonths = getAvailableMonths(allUsinaFaturas, geracoes);
   
+  // Sort clients by contract number
+  const clientesOrdenados = [...clientes].sort((a, b) => {
+    const aNum = a.numeroContrato || "";
+    const bNum = b.numeroContrato || "";
+    return aNum.localeCompare(bNum, undefined, { numeric: true });
+  });
+
+  // Sort faturas by client contract number
+  const faturasOrdenadas = [...faturas].sort((a, b) => {
+    const clienteA = clientes.find(c => c.id === a.clienteId);
+    const clienteB = clientes.find(c => c.id === b.clienteId);
+    const aNum = clienteA?.numeroContrato || "";
+    const bNum = clienteB?.numeroContrato || "";
+    return aNum.localeCompare(bNum, undefined, { numeric: true });
+  });
+
   // Calculate monthly status (case-insensitive comparison for compatibility)
   const faturasDoMes = faturas.filter((f) => f.mesReferencia.toUpperCase() === currentMonth.toUpperCase());
   const clientesComFatura = new Set(faturasDoMes.map((f) => f.clienteId));
-  const clientesSemFatura = clientes.filter((c) => !clientesComFatura.has(c.id));
+  const clientesSemFatura = clientesOrdenados.filter((c) => !clientesComFatura.has(c.id));
   const todasFaturasImportadas = clientesSemFatura.length === 0 && clientes.length > 0;
 
   // Calculate totals
@@ -632,6 +648,7 @@ export default function UsinaDetalhesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
+                    <TableHead>Contrato</TableHead>
                     <TableHead>UC</TableHead>
                     <TableHead>Mês Ref.</TableHead>
                     <TableHead className="text-right">Consumo SCEE</TableHead>
@@ -642,9 +659,12 @@ export default function UsinaDetalhesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {faturas.slice(0, 50).map((fatura) => (
+                  {faturasOrdenadas.slice(0, 50).map((fatura) => (
                     <TableRow key={fatura.id}>
                       <TableCell>{fatura.cliente?.nome || "-"}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {fatura.cliente?.numeroContrato || "-"}
+                      </TableCell>
                       <TableCell className="font-mono text-sm">
                         {fatura.cliente?.unidadeConsumidora || "-"}
                       </TableCell>
@@ -731,6 +751,7 @@ export default function UsinaDetalhesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
+                    <TableHead>Contrato</TableHead>
                     <TableHead>UC</TableHead>
                     <TableHead>Desconto</TableHead>
                     <TableHead>Pagante</TableHead>
@@ -738,11 +759,14 @@ export default function UsinaDetalhesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clientes.map((cliente) => {
+                  {clientesOrdenados.map((cliente) => {
                     const temFaturaMes = clientesComFatura.has(cliente.id);
                     return (
                       <TableRow key={cliente.id}>
                         <TableCell className="font-medium">{cliente.nome}</TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {cliente.numeroContrato || "-"}
+                        </TableCell>
                         <TableCell className="font-mono text-sm">
                           {cliente.unidadeConsumidora}
                         </TableCell>
@@ -925,6 +949,7 @@ export default function UsinaDetalhesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Cliente</TableHead>
+                      <TableHead>Contrato</TableHead>
                       <TableHead className="text-right">Faturas</TableHead>
                       <TableHead className="text-right">Total Pago</TableHead>
                       <TableHead className="text-right">Economia</TableHead>
@@ -932,7 +957,7 @@ export default function UsinaDetalhesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {clientes.map((cliente) => {
+                    {clientesOrdenados.map((cliente) => {
                       const clienteFaturas = faturas.filter((f) => f.clienteId === cliente.id);
                       const totalPago = clienteFaturas.reduce(
                         (acc, f) => acc + parseFloat(f.valorComDesconto || "0"),
@@ -950,6 +975,9 @@ export default function UsinaDetalhesPage() {
                       return (
                         <TableRow key={cliente.id}>
                           <TableCell className="font-medium">{cliente.nome}</TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {cliente.numeroContrato || "-"}
+                          </TableCell>
                           <TableCell className="text-right">{clienteFaturas.length}</TableCell>
                           <TableCell className="text-right font-mono">
                             {formatCurrency(totalPago)}
