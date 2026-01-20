@@ -1597,6 +1597,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         economia: fatura.economia,
         contribuicaoIluminacao: fatura.contribuicaoIluminacao,
         precoKwh: fatura.precoKwh,
+        precoFioB: fatura.precoFioB,
       };
 
       // Log dos dados usados para gerar o PDF (para debug)
@@ -1605,6 +1606,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.log(`[PDF Generation] Valores usados:`, {
         consumoScee: pdfData.consumoScee,
         precoKwh: pdfData.precoKwh,
+        precoFioB: pdfData.precoFioB,
         valorTotal: pdfData.valorTotal,
         valorSemDesconto: pdfData.valorSemDesconto,
         valorComDesconto: pdfData.valorComDesconto,
