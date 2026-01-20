@@ -289,6 +289,17 @@ export default function UsinaDetalhesPage() {
   const openEditModal = (fatura: Fatura) => {
     setEditingFatura(fatura);
     setPrecoKwhInfo(null); // Reset price info when opening modal
+
+    // Determine status da fatura com desconto
+    let statusFaturaDesconto = "pendente";
+    if (fatura.faturaClienteRecebidaAt) {
+      statusFaturaDesconto = "recebida";
+    } else if (fatura.faturaClienteEnviadaAt) {
+      statusFaturaDesconto = "enviada";
+    } else if (fatura.faturaClienteGeradaAt) {
+      statusFaturaDesconto = "gerada";
+    }
+
     setEditFormData({
       mesReferencia: fatura.mesReferencia || "",
       dataVencimento: fatura.dataVencimento || "",
@@ -302,6 +313,7 @@ export default function UsinaDetalhesPage() {
       economia: formatNumber(fatura.economia),
       lucro: formatNumber(fatura.lucro),
       status: fatura.status || "pendente",
+      statusFaturaDesconto,
     });
   };
   
@@ -336,6 +348,34 @@ export default function UsinaDetalhesPage() {
         updates[field] = num.toFixed(2);
       }
     });
+
+    // Convert statusFaturaDesconto to timestamps
+    if (updates.statusFaturaDesconto) {
+      const now = new Date().toISOString();
+      switch (updates.statusFaturaDesconto) {
+        case "pendente":
+          updates.faturaClienteGeradaAt = "";
+          updates.faturaClienteEnviadaAt = "";
+          updates.faturaClienteRecebidaAt = "";
+          break;
+        case "gerada":
+          updates.faturaClienteGeradaAt = editingFatura.faturaClienteGeradaAt || now;
+          updates.faturaClienteEnviadaAt = "";
+          updates.faturaClienteRecebidaAt = "";
+          break;
+        case "enviada":
+          updates.faturaClienteGeradaAt = editingFatura.faturaClienteGeradaAt || now;
+          updates.faturaClienteEnviadaAt = editingFatura.faturaClienteEnviadaAt || now;
+          updates.faturaClienteRecebidaAt = "";
+          break;
+        case "recebida":
+          updates.faturaClienteGeradaAt = editingFatura.faturaClienteGeradaAt || now;
+          updates.faturaClienteEnviadaAt = editingFatura.faturaClienteEnviadaAt || now;
+          updates.faturaClienteRecebidaAt = editingFatura.faturaClienteRecebidaAt || now;
+          break;
+      }
+      delete updates.statusFaturaDesconto;
+    }
 
     updateFaturaMutation.mutate({ id: editingFatura.id, updates });
   };
@@ -622,28 +662,33 @@ export default function UsinaDetalhesPage() {
             <Zap className="h-4 w-4" />
             Geração
           </TabsTrigger>
-          <TabsTrigger value="relatorios" className="gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Relatórios
-          </TabsTrigger>
+          {!isOperador && (
+            <TabsTrigger value="relatorios" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Relatórios
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="faturas" className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h3 className="text-lg font-medium">Faturas da Usina</h3>
-            <div className="flex items-center gap-2 flex-wrap">
-              <MonthPicker
-                value={selectedFaturasMonth}
-                onChange={setSelectedFaturasMonth}
-                placeholder="Filtrar por mês"
-                allowAll={true}
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <h3 className="text-lg font-medium">Faturas da Usina</h3>
               <Button asChild>
                 <Link href="/faturas/upload">
                   <Upload className="h-4 w-4 mr-2" />
                   Importar
                 </Link>
               </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Filtrar por mês:</span>
+              <MonthPicker
+                value={selectedFaturasMonth}
+                onChange={setSelectedFaturasMonth}
+                placeholder="Selecione o mês"
+                allowAll={true}
+              />
             </div>
           </div>
 
@@ -706,30 +751,39 @@ export default function UsinaDetalhesPage() {
                         </TableCell>
                       )}
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={hasUpload ? "default" : "secondary"}>
-                            {hasUpload ? "Upload" : "Pendente"}
+                        {isPaidToConcessionaria ? (
+                          <Badge variant="default" className="bg-green-600">
+                            Pago
                           </Badge>
-                          <Badge variant={isPaidToConcessionaria ? "default" : "secondary"}>
-                            {isPaidToConcessionaria ? "Pago" : "A Pagar"}
+                        ) : hasUpload ? (
+                          <Badge variant="default" className="bg-blue-600">
+                            Aguardando Pagamento
                           </Badge>
-                        </div>
+                        ) : (
+                          <Badge variant="secondary">
+                            Sem Upload
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {isUsoProprio ? (
                           <Badge variant="outline">Não aplicável</Badge>
+                        ) : faturaClienteRecebida ? (
+                          <Badge variant="default" className="bg-green-600">
+                            Recebida
+                          </Badge>
+                        ) : faturaClienteEnviada ? (
+                          <Badge variant="default" className="bg-blue-600">
+                            Enviada
+                          </Badge>
+                        ) : faturaClienteGerada ? (
+                          <Badge variant="default" className="bg-amber-600">
+                            Gerada
+                          </Badge>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <Badge variant={faturaClienteGerada ? "default" : "secondary"}>
-                              {faturaClienteGerada ? "Gerada" : "Pendente"}
-                            </Badge>
-                            <Badge variant={faturaClienteEnviada ? "default" : "secondary"}>
-                              {faturaClienteEnviada ? "Enviada" : "A Enviar"}
-                            </Badge>
-                            <Badge variant={faturaClienteRecebida ? "default" : "secondary"}>
-                              {faturaClienteRecebida ? "Recebida" : "A Receber"}
-                            </Badge>
-                          </div>
+                          <Badge variant="secondary">
+                            Pendente
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -902,9 +956,10 @@ export default function UsinaDetalhesPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="relatorios" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h3 className="text-lg font-medium">Resumo Financeiro</h3>
+        {!isOperador && (
+          <TabsContent value="relatorios" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h3 className="text-lg font-medium">Resumo Financeiro</h3>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Período:</span>
               <div className="flex flex-wrap gap-1">
@@ -995,7 +1050,7 @@ export default function UsinaDetalhesPage() {
                       <TableHead className="text-right">Faturas</TableHead>
                       <TableHead className="text-right">Total Pago</TableHead>
                       <TableHead className="text-right">Economia</TableHead>
-                      <TableHead className="text-right">Lucro</TableHead>
+                      {!isOperador && <TableHead className="text-right">Lucro</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1027,9 +1082,11 @@ export default function UsinaDetalhesPage() {
                           <TableCell className="text-right font-mono text-blue-600">
                             {formatCurrency(totalEconomia)}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-green-600">
-                            {formatCurrency(totalLucro)}
-                          </TableCell>
+                          {!isOperador && (
+                            <TableCell className="text-right font-mono text-green-600">
+                              {formatCurrency(totalLucro)}
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
                     })}
@@ -1038,7 +1095,8 @@ export default function UsinaDetalhesPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+          </TabsContent>
+        )}
       </Tabs>
       
       <Dialog open={!!editingFatura} onOpenChange={(open) => !open && setEditingFatura(null)}>
@@ -1125,43 +1183,22 @@ export default function UsinaDetalhesPage() {
                       <h4 className="font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300">
                         Fatura com Desconto
                       </h4>
-                      <div className="space-y-3 pl-2">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="edit-faturaClienteGerada"
-                            checked={!!editFormData.faturaClienteGeradaAt}
-                            onChange={(e) => handleEditFieldChange("faturaClienteGeradaAt", e.target.checked ? new Date().toISOString() : "")}
-                            className="h-4 w-4 rounded border-gray-300"
-                          />
-                          <Label htmlFor="edit-faturaClienteGerada" className="cursor-pointer font-normal">
-                            Fatura Gerada
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="edit-faturaClienteEnviada"
-                            checked={!!editFormData.faturaClienteEnviadaAt}
-                            onChange={(e) => handleEditFieldChange("faturaClienteEnviadaAt", e.target.checked ? new Date().toISOString() : "")}
-                            className="h-4 w-4 rounded border-gray-300"
-                          />
-                          <Label htmlFor="edit-faturaClienteEnviada" className="cursor-pointer font-normal">
-                            Fatura Enviada ao Cliente
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="edit-faturaClienteRecebida"
-                            checked={!!editFormData.faturaClienteRecebidaAt}
-                            onChange={(e) => handleEditFieldChange("faturaClienteRecebidaAt", e.target.checked ? new Date().toISOString() : "")}
-                            className="h-4 w-4 rounded border-gray-300"
-                          />
-                          <Label htmlFor="edit-faturaClienteRecebida" className="cursor-pointer font-normal">
-                            Pagamento Recebido do Cliente
-                          </Label>
-                        </div>
+                      <div className="space-y-2 pl-2">
+                        <Label htmlFor="edit-statusFaturaDesconto">Status da Fatura</Label>
+                        <Select
+                          value={editFormData.statusFaturaDesconto || "pendente"}
+                          onValueChange={(value) => handleEditFieldChange("statusFaturaDesconto", value)}
+                        >
+                          <SelectTrigger id="edit-statusFaturaDesconto">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pendente">Pendente</SelectItem>
+                            <SelectItem value="gerada">Gerada</SelectItem>
+                            <SelectItem value="enviada">Enviada ao Cliente</SelectItem>
+                            <SelectItem value="recebida">Pagamento Recebido</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}
