@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, cn } from "@/lib/utils";
+import { MonthPicker } from "@/components/month-picker";
 
 function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): string[] {
   const months = new Set([
@@ -137,12 +138,13 @@ export default function UsinaDetalhesPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const currentMonth = getCurrentMonthRef();
-  
+
   const [editingFatura, setEditingFatura] = useState<(Fatura & { cliente?: Cliente }) | null>(null);
   const [editFormData, setEditFormData] = useState<Record<string, string>>({});
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [selectedReportMonths, setSelectedReportMonths] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [selectedFaturasMonth, setSelectedFaturasMonth] = useState<string>(currentMonth);
   const [precoKwhInfo, setPrecoKwhInfo] = useState<{
     valor: string;
     mesOrigem: string;
@@ -180,9 +182,11 @@ export default function UsinaDetalhesPage() {
     return `${months[now.getMonth()]}/${now.getFullYear()}`;
   };
   const previousMonth = getPreviousMonthRef();
-  
-  // Faturas logic
-  const faturas = allUsinaFaturas;
+
+  // Faturas logic - filter by selected month
+  const faturas = selectedFaturasMonth === "all"
+    ? allUsinaFaturas
+    : allUsinaFaturas.filter(f => f.mesReferencia.toUpperCase() === selectedFaturasMonth.toUpperCase());
   
   // Update fatura mutation
   const updateFaturaMutation = useMutation({
@@ -622,6 +626,12 @@ export default function UsinaDetalhesPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h3 className="text-lg font-medium">Faturas da Usina</h3>
             <div className="flex items-center gap-2 flex-wrap">
+              <MonthPicker
+                value={selectedFaturasMonth}
+                onChange={setSelectedFaturasMonth}
+                placeholder="Filtrar por mês"
+                allowAll={true}
+              />
               <Button asChild>
                 <Link href="/faturas/upload">
                   <Upload className="h-4 w-4 mr-2" />

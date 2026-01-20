@@ -22,6 +22,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { UsinaSection } from "@/components/usina-section";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -34,15 +40,70 @@ import {
   Save,
   X,
   Calculator,
+  Info,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
-import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth } from "@/lib/utils";
+import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface FaturaWithCliente extends Fatura {
   cliente?: Cliente;
 }
+
+// Field categories for organized display in edit modal
+const FIELD_CATEGORIES = [
+  {
+    name: "Informações Gerais",
+    color: "blue",
+    bgClass: "bg-blue-50 dark:bg-blue-950/30",
+    borderClass: "border-blue-200 dark:border-blue-800",
+    textClass: "text-blue-700 dark:text-blue-300",
+    fields: [
+      { key: "mesReferencia", label: "Mês Referência", type: "text" as const },
+      { key: "dataVencimento", label: "Data Vencimento", type: "text" as const },
+    ]
+  },
+  {
+    name: "Consumo e Geração (kWh)",
+    color: "amber",
+    bgClass: "bg-amber-50 dark:bg-amber-950/30",
+    borderClass: "border-amber-200 dark:border-amber-800",
+    textClass: "text-amber-700 dark:text-amber-300",
+    fields: [
+      { key: "consumoScee", label: "Consumo SCEE (kWh)", type: "text" as const },
+      { key: "consumoNaoCompensado", label: "Consumo Não Compensado (kWh)", type: "text" as const },
+      { key: "energiaInjetada", label: "Energia Injetada (kWh)", type: "text" as const },
+      { key: "saldoKwh", label: "Saldo (kWh)", type: "text" as const },
+    ]
+  },
+  {
+    name: "Valores Monetários (R$)",
+    color: "green",
+    bgClass: "bg-green-50 dark:bg-green-950/30",
+    borderClass: "border-green-200 dark:border-green-800",
+    textClass: "text-green-700 dark:text-green-300",
+    fields: [
+      { key: "valorTotal", label: "Valor Total Fatura (R$)", type: "text" as const },
+      { key: "valorSemDesconto", label: "Valor Sem Desconto (R$)", type: "text" as const },
+      { key: "valorComDesconto", label: "Valor Com Desconto (R$)", type: "text" as const },
+      {
+        key: "economia",
+        label: "Economia (R$)",
+        type: "text" as const,
+        readonly: true,
+        formula: "Economia = Valor Sem Desconto - Valor Com Desconto"
+      },
+      {
+        key: "lucro",
+        label: "Lucro (R$)",
+        type: "text" as const,
+        readonly: true,
+        formula: "Lucro = Valor Com Desconto - Valor Total Fatura"
+      },
+    ]
+  }
+];
 
 function getRecentMonths(count = 12): string[] {
   const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
@@ -484,238 +545,59 @@ export default function FaturasNewPage() {
           <div className="grid grid-cols-2 gap-4 p-6 flex-1 overflow-hidden">
             {/* Left side - Form */}
             <ScrollArea className="h-full pr-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>CPF/CNPJ</Label>
-                    <Input
-                      value={editFormData.cpfCnpj || ""}
-                      onChange={(e) => updateEditFormField("cpfCnpj", e.target.value)}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <Label>Unidade Consumidora</Label>
-                    <Input
-                      value={editFormData.unidadeConsumidora || ""}
-                      onChange={(e) => updateEditFormField("unidadeConsumidora", e.target.value)}
-                      disabled
-                    />
-                  </div>
-                </div>
+              <TooltipProvider>
+                <div className="space-y-6">
+                  {FIELD_CATEGORIES.map((category) => (
+                    <div key={category.name} className="space-y-3">
+                      <h4 className={cn(
+                        "font-medium text-sm uppercase tracking-wide px-2 py-1 rounded-md border",
+                        category.bgClass,
+                        category.borderClass,
+                        category.textClass
+                      )}>
+                        {category.name}
+                      </h4>
+                      <div className="grid gap-3 md:grid-cols-2 pl-2">
+                        {category.fields.map(({ key, label, readonly, formula }) => (
+                          <div key={key} className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Label>{label}</Label>
+                              {readonly && formula && (
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <Info className="h-3 w-3 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">{formula}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <Input
+                              type="text"
+                              placeholder={`Ex: 100,00`}
+                              value={editFormData[key] || ""}
+                              onChange={(e) => updateEditFormField(key, e.target.value)}
+                              disabled={readonly}
+                              className={readonly ? "bg-muted" : ""}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
 
-                <div>
-                  <Label>Nome do Cliente</Label>
-                  <Input
-                    value={editFormData.nomeCliente || ""}
-                    onChange={(e) => updateEditFormField("nomeCliente", e.target.value)}
-                    disabled
-                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleRecalculate}
+                    className="w-full"
+                  >
+                    <Calculator className="h-4 w-4 mr-2" />
+                    Recalcular Valores
+                  </Button>
                 </div>
-
-                <div>
-                  <Label>Endereço</Label>
-                  <Input
-                    value={editFormData.endereco || ""}
-                    onChange={(e) => updateEditFormField("endereco", e.target.value)}
-                    disabled
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Mês de Referência</Label>
-                    <MonthPicker
-                      value={editFormData.mesReferencia || ""}
-                      onChange={(value) => updateEditFormField("mesReferencia", value)}
-                      placeholder="Selecione o mês"
-                    />
-                  </div>
-                  <div>
-                    <Label>Data de Vencimento</Label>
-                    <Input
-                      value={editFormData.dataVencimento || ""}
-                      onChange={(e) => updateEditFormField("dataVencimento", e.target.value)}
-                      placeholder="DD/MM/AAAA"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label>Leitura Anterior</Label>
-                    <Input
-                      value={editFormData.leituraAnterior || ""}
-                      onChange={(e) => updateEditFormField("leituraAnterior", e.target.value)}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <Label>Leitura Atual</Label>
-                    <Input
-                      value={editFormData.leituraAtual || ""}
-                      onChange={(e) => updateEditFormField("leituraAtual", e.target.value)}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <Label>Quantidade de Dias</Label>
-                    <Input
-                      value={editFormData.quantidadeDias || ""}
-                      onChange={(e) => updateEditFormField("quantidadeDias", e.target.value)}
-                      disabled
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Consumo SCEE (kWh)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.consumoScee || ""}
-                      onChange={(e) => updateEditFormField("consumoScee", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Consumo Não Compensado (kWh)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.consumoNaoCompensado || ""}
-                      onChange={(e) => updateEditFormField("consumoNaoCompensado", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label>Preço kWh (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.000001"
-                      value={editFormData.precoKwh || ""}
-                      onChange={(e) => updateEditFormField("precoKwh", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Preço Fio B (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.000001"
-                      value={editFormData.precoFioB || ""}
-                      onChange={(e) => updateEditFormField("precoFioB", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Preço ADC Bandeira (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.000001"
-                      value={editFormData.precoAdcBandeira || ""}
-                      onChange={(e) => updateEditFormField("precoAdcBandeira", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Fio B (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editFormData.fioB || ""}
-                    disabled
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Calculado: Consumo SCEE × Preço Fio B
-                  </p>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleRecalculate}
-                  className="w-full"
-                >
-                  <Calculator className="h-4 w-4 mr-2" />
-                  Recalcular Valores
-                </Button>
-
-                <div>
-                  <Label>Contribuição Iluminação (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editFormData.contribuicaoIluminacao || ""}
-                    onChange={(e) => updateEditFormField("contribuicaoIluminacao", e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Valor Total (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.valorTotal || ""}
-                      onChange={(e) => updateEditFormField("valorTotal", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Saldo (kWh)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.saldoKwh || ""}
-                      onChange={(e) => updateEditFormField("saldoKwh", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Valor Sem Desconto (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.valorSemDesconto || ""}
-                      onChange={(e) => updateEditFormField("valorSemDesconto", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Valor Com Desconto (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.valorComDesconto || ""}
-                      onChange={(e) => updateEditFormField("valorComDesconto", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Economia (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.economia || ""}
-                      onChange={(e) => updateEditFormField("economia", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Lucro (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editFormData.lucro || ""}
-                      onChange={(e) => updateEditFormField("lucro", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
+              </TooltipProvider>
             </ScrollArea>
 
             {/* Right side - PDF Preview */}
