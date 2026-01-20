@@ -49,11 +49,14 @@ def generate_invoice_pdf(data, output_path):
     economia = float(data.get('economia', 0) or 0)
     contribuicao_iluminacao = float(data.get('contribuicaoIluminacao', 0) or 0)
     preco_kwh = float(data.get('precoKwh', 0.85) or 0.85)
-    
+    preco_fio_b = float(data.get('precoFioB', 0) or 0)
+
     energia_ativa_quantidade = consumo_scee + consumo_nao_compensado
     energia_ativa_valor = energia_ativa_quantidade * preco_kwh
-    # Taxa Mínima = Valor total - ((Consumo não compensado * preço do kwh) + fiob R$)
-    taxa_minima = valor_total - ((consumo_nao_compensado * preco_kwh) + contribuicao_iluminacao)
+    # Taxa Mínima = Valor total - ((Consumo não compensado * preço do kwh) + (consumoSCEE * preço do fio B))
+    # Onde FIOB = consumoSCEE * preço do fio B
+    fio_b_valor = consumo_scee * preco_fio_b
+    taxa_minima = valor_total - ((consumo_nao_compensado * preco_kwh) + fio_b_valor)
     valor_calculado = energia_ativa_valor + taxa_minima
     
     tem_desconto = economia > 0
