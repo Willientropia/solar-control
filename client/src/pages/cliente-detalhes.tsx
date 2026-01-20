@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -79,6 +79,42 @@ export default function ClienteDetalhesPage() {
   // Relatório de economia
   const [mesInicial, setMesInicial] = useState<string>("");
   const [mesFinal, setMesFinal] = useState<string>("");
+
+  // Helper function to compare months in "JAN/2025" format
+  const compareMonths = (mesA: string, mesB: string): number => {
+    if (!mesA || !mesB) return 0;
+    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const [mesTextA, anoA] = mesA.split('/');
+    const [mesTextB, anoB] = mesB.split('/');
+    const yearDiff = parseInt(anoA) - parseInt(anoB);
+    if (yearDiff !== 0) return yearDiff;
+    return meses.indexOf(mesTextA.toUpperCase()) - meses.indexOf(mesTextB.toUpperCase());
+  };
+
+  // Validated handlers for month selection
+  const handleMesInicialChange = (value: string) => {
+    if (mesFinal && compareMonths(value, mesFinal) > 0) {
+      toast({
+        title: "Período inválido",
+        description: "O mês inicial não pode ser posterior ao mês final",
+        variant: "destructive",
+      });
+      return;
+    }
+    setMesInicial(value);
+  };
+
+  const handleMesFinalChange = (value: string) => {
+    if (mesInicial && compareMonths(value, mesInicial) < 0) {
+      toast({
+        title: "Período inválido",
+        description: "O mês final não pode ser anterior ao mês inicial",
+        variant: "destructive",
+      });
+      return;
+    }
+    setMesFinal(value);
+  };
 
   // Fetch cliente details
   const { data: cliente, isLoading } = useQuery<ClienteDetalhes>({
@@ -406,7 +442,7 @@ export default function ClienteDetalhesPage() {
                 <Label>Mês Inicial</Label>
                 <MonthPicker
                   value={mesInicial}
-                  onChange={setMesInicial}
+                  onChange={handleMesInicialChange}
                   placeholder="Selecione o mês inicial"
                 />
               </div>
@@ -414,7 +450,7 @@ export default function ClienteDetalhesPage() {
                 <Label>Mês Final</Label>
                 <MonthPicker
                   value={mesFinal}
-                  onChange={setMesFinal}
+                  onChange={handleMesFinalChange}
                   placeholder="Selecione o mês final"
                 />
               </div>
