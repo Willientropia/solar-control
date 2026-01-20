@@ -8,7 +8,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -40,7 +39,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { fetchWithAuth, useAuthContext } from '@/contexts/AuthContext';
-import { UserPlus, Loader2, AlertCircle, Shield, User, UserCog } from 'lucide-react';
+import { UserPlus, Loader2, AlertCircle, Shield, User, UserCog, Pencil } from 'lucide-react';
 
 interface UserData {
   id: string;
@@ -62,15 +61,23 @@ export default function UsuariosPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthContext();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Form state
+  // Create dialog state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<'admin' | 'operador'>('operador');
-  const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+
+  // Edit dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserData | null>(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'operador'>('operador');
+  const [editError, setEditError] = useState('');
 
   // Buscar membros da organização
   const { data: members, isLoading } = useQuery<UserData[]>({
@@ -147,30 +154,77 @@ export default function UsuariosPage() {
       setFirstName('');
       setLastName('');
       setRole('operador');
-      setError('');
-      setIsDialogOpen(false);
+      setCreateError('');
+      setIsCreateDialogOpen(false);
     },
     onError: (error: Error) => {
-      setError(error.message);
+      setCreateError(error.message);
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Mutation para atualizar usuário
+  const updateUserMutation = useMutation({
+    mutationFn: async (data: {
+      userId: string;
+      role: string;
+    }) => {
+      if (!currentUser?.organization?.id) {
+        throw new Error('Organization not found');
+      }
+
+      const response = await fetchWithAuth(
+        `/api/organizations/${currentUser.organization.id}/members/${data.userId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ role: data.role }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update user');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/organizations', currentUser?.organization?.id, 'members'],
+      });
+
+      toast({
+        title: 'Usuário atualizado com sucesso!',
+        description: 'As alterações foram salvas.',
+      });
+
+      setEditingUser(null);
+      setIsEditDialogOpen(false);
+      setEditError('');
+    },
+    onError: (error: Error) => {
+      setEditError(error.message);
+    },
+  });
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setCreateError('');
 
     if (!email || !password || !firstName) {
-      setError('Por favor, preencha todos os campos obrigatórios');
+      setCreateError('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
     if (password.length < 8) {
-      setError('A senha deve ter no mínimo 8 caracteres');
+      setCreateError('A senha deve ter no mínimo 8 caracteres');
       return;
     }
 
     if (!currentUser?.organization?.id) {
-      setError('Organização não encontrada');
+      setCreateError('Organização não encontrada');
       return;
     }
 
@@ -182,6 +236,30 @@ export default function UsuariosPage() {
       role,
       organizationId: currentUser.organization.id,
     });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError('');
+
+    if (!editingUser) {
+      setEditError('Usuário não selecionado');
+      return;
+    }
+
+    updateUserMutation.mutate({
+      userId: editingUser.id,
+      role: editRole,
+    });
+  };
+
+  const openEditDialog = (user: UserData) => {
+    setEditingUser(user);
+    setEditFirstName(user.firstName || '');
+    setEditLastName(user.lastName || '');
+    setEditRole(user.role === 'admin' || user.role === 'super_admin' ? 'admin' : 'operador');
+    setEditError('');
+    setIsEditDialogOpen(true);
   };
 
   const getRoleIcon = (role: string) => {
@@ -236,7 +314,8 @@ export default function UsuariosPage() {
               </CardDescription>
             </div>
 
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            {/* Dialog para criar usuário */}
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <UserPlus className="mr-2 h-4 w-4" />
@@ -244,7 +323,7 @@ export default function UsuariosPage() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[500px]">
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleCreateSubmit}>
                   <DialogHeader>
                     <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
                     <DialogDescription>
@@ -253,10 +332,10 @@ export default function UsuariosPage() {
                   </DialogHeader>
 
                   <div className="space-y-4 py-4">
-                    {error && (
+                    {createError && (
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{error}</AlertDescription>
+                        <AlertDescription>{createError}</AlertDescription>
                       </Alert>
                     )}
 
@@ -348,7 +427,7 @@ export default function UsuariosPage() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
+                      onClick={() => setIsCreateDialogOpen(false)}
                       disabled={createUserMutation.isPending}
                     >
                       Cancelar
@@ -384,6 +463,7 @@ export default function UsuariosPage() {
                   <TableHead>Nível de Acesso</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Data de Cadastro</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -416,6 +496,18 @@ export default function UsuariosPage() {
                     <TableCell>
                       {new Date(member.createdAt).toLocaleDateString('pt-BR')}
                     </TableCell>
+                    <TableCell className="text-right">
+                      {member.role !== 'super_admin' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(member)}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Editar
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -427,6 +519,108 @@ export default function UsuariosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog para editar usuário */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleEditSubmit}>
+            <DialogHeader>
+              <DialogTitle>Editar Usuário</DialogTitle>
+              <DialogDescription>
+                Altere o nível de acesso do usuário
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {editError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{editError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  value={editingUser?.email || ''}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={editFirstName}
+                    disabled
+                    className="bg-muted"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Sobrenome</Label>
+                  <Input
+                    value={editLastName}
+                    disabled
+                    className="bg-muted"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editRole">Nível de Acesso</Label>
+                <Select
+                  value={editRole}
+                  onValueChange={(value: 'admin' | 'operador') => setEditRole(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="operador">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        <span>Operador</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <UserCog className="h-4 w-4" />
+                        <span>Administrador</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Administradores têm acesso completo à organização
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+                disabled={updateUserMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={updateUserMutation.isPending}>
+                {updateUserMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar Alterações'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
