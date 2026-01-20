@@ -1641,12 +1641,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (result.error) {
             return res.status(500).json({ message: result.error });
           }
-          
+
+          // Retornar URL do PDF gerado (não salva no DB, sempre gera sob demanda)
           const pdfUrl = `/uploads/faturas_geradas/${outputFilename}`;
-          await storage.updateFatura(faturaId, {
-            faturaGeradaUrl: pdfUrl,
-            faturaClienteGeradaAt: new Date()
-          });
           await logAction(req.user.claims.sub, "gerar_pdf", "fatura", faturaId);
 
           res.json({ success: true, pdfUrl });
@@ -1696,8 +1693,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const outputDir = path.join(process.cwd(), "uploads", "faturas_geradas");
       await fsPromises.mkdir(outputDir, { recursive: true });
 
-      // Gerar todos os PDFs
-      const pdfPaths: string[] = [];
+      // Gerar todos os PDFs (sempre gera sob demanda, não salva no DB)
       const pdfPromises = faturas.map(async (fatura: any) => {
         const cliente = allClientes.find((c: any) => c.id === fatura.clienteId);
         if (!cliente) return null;
@@ -1705,15 +1701,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const outputFilename = `fatura_${cliente.unidadeConsumidora}_${fatura.mesReferencia.replace("/", "_")}.pdf`;
         const outputPath = path.join(outputDir, outputFilename);
 
-        // Verificar se o PDF já existe
-        try {
-          await fsPromises.access(outputPath);
-          console.log(`[ZIP Download] PDF já existe: ${outputFilename}`);
-          return { path: outputPath, filename: outputFilename };
-        } catch {
-          // PDF não existe, precisa gerar
-          console.log(`[ZIP Download] Gerando PDF: ${outputFilename}`);
-        }
+        console.log(`[ZIP Download] Gerando PDF: ${outputFilename}`);
 
         const pdfData = {
           nomeCliente: cliente.nome,
@@ -1760,11 +1748,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             try {
               const result = JSON.parse(stdout);
               if (result.success) {
-                // Atualizar fatura com URL do PDF gerado
-                await storage.updateFatura(fatura.id, {
-                  faturaGeradaUrl: `/uploads/faturas_geradas/${outputFilename}`,
-                  faturaClienteGeradaAt: new Date().toISOString(),
-                });
+                // Retorna o path do PDF gerado (não salva no DB)
                 resolve({ path: outputPath, filename: outputFilename });
               } else {
                 console.error(`[ZIP Download] Erro no resultado: ${result.error}`);
