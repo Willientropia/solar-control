@@ -891,13 +891,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const clienteFaturas = allFaturas
         .filter((f: any) => f.clienteId === clienteId)
         .sort((a: any, b: any) => {
-          // Sort by mesReferencia (format: "Jan/2024")
+          // Sort by mesReferencia (format: "JAN/2024" or "Jan/2024")
           const [mesA, anoA] = a.mesReferencia?.split('/') || ['', ''];
           const [mesB, anoB] = b.mesReferencia?.split('/') || ['', ''];
 
-          const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-          const mesIndexA = meses.indexOf(mesA);
-          const mesIndexB = meses.indexOf(mesB);
+          const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+          const mesIndexA = meses.indexOf(mesA.toUpperCase());
+          const mesIndexB = meses.indexOf(mesB.toUpperCase());
 
           // First compare years, then months
           if (anoB !== anoA) {
@@ -1797,8 +1797,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Function to parse month/year string to comparable value
       const parseMonthYear = (mesRef: string) => {
         const [mes, ano] = mesRef.split('/');
-        const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const mesIndex = meses.indexOf(mes);
+        // Support both uppercase (JAN) and first letter uppercase (Jan) formats
+        const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+        const mesIndex = meses.indexOf(mes.toUpperCase());
         return parseInt(ano) * 12 + mesIndex;
       };
 
