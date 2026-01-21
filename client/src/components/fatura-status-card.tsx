@@ -353,7 +353,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
                   expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50"
                 )}
               >
-                <a href={fatura.arquivoPdfUrl} download target="_blank" rel="noopener noreferrer">
+                <a href={addTokenToUrl(fatura.arquivoPdfUrl)} download target="_blank" rel="noopener noreferrer">
                   <Download className="h-4 w-4 mr-2" />
                   Baixar Original
                 </a>
