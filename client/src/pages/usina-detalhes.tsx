@@ -40,7 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, addTokenToUrl } from "@/lib/queryClient";
 import {
   ArrowLeft,
   Users,
@@ -232,7 +232,7 @@ export default function UsinaDetalhesPage() {
         description: "A fatura foi gerada com sucesso.",
       });
       if (data.pdfUrl) {
-        window.open(data.pdfUrl, "_blank");
+        window.open(addTokenToUrl(data.pdfUrl), "_blank");
       }
     },
     onError: (error: Error) => {
@@ -258,7 +258,7 @@ export default function UsinaDetalhesPage() {
         description: "O relatório foi gerado com sucesso.",
       });
       if (data.pdfUrl) {
-        window.open(data.pdfUrl, "_blank");
+        window.open(addTokenToUrl(data.pdfUrl), "_blank");
       }
     },
     onError: (error: Error) => {

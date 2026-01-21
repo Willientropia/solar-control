@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { FaturaFlowIndicators } from "./fatura-flow-indicators";
 import { formatCurrency, cn } from "@/lib/utils";
-import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Fatura, Cliente } from "@shared/schema";
 import { Link } from "wouter";
@@ -212,7 +212,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
 
       // Download the PDF (always opens in new tab)
       if (data.pdfUrl) {
-        window.open(data.pdfUrl, "_blank");
+        window.open(addTokenToUrl(data.pdfUrl), "_blank");
       }
 
       toast({ title: "PDF baixado com sucesso" });

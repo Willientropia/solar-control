@@ -105,6 +105,24 @@ export async function authenticatedFetch(
   return response;
 }
 
+/**
+ * Helper function to add auth token to URL as query parameter
+ * Useful for resources that need to be accessed directly by the browser (PDFs, images, etc.)
+ *
+ * @param url - The URL to add token to
+ * @returns URL with ?token=xxx appended (or &token=xxx if URL already has query params)
+ */
+export function addTokenToUrl(url: string): string {
+  const token = getStoredToken();
+
+  if (!token) {
+    return url;
+  }
+
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}token=${encodeURIComponent(token)}`;
+}
+
 export async function apiRequest(
   method: string,
   url: string,

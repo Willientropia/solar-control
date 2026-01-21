@@ -11,7 +11,7 @@ import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import * as AuthService from "./services/auth-service";
-import { requireAuth, requireRole, requireAdmin } from "./middleware/auth";
+import { requireAuth, requireRole, requireAdmin, requireAuthOrQuery } from "./middleware/auth";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -1049,7 +1049,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Serve PDF files for preview (supports nested paths)
-  app.get("/api/faturas/pdf/*", requireAuth, (req, res) => {
+  // Uses requireAuthOrQuery to allow token via query string for browser direct access
+  app.get("/api/faturas/pdf/*", requireAuthOrQuery, (req, res) => {
     // Extract the path after /api/faturas/pdf/
     const relativePath = req.params[0];
     const filePath = path.join(uploadDir, relativePath);

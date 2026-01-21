@@ -44,7 +44,7 @@ import {
   Info,
   Save,
 } from "lucide-react";
-import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { cn, parseToNumber, formatNumber, normalizeMonth } from "@/lib/utils";
 
@@ -1249,7 +1249,7 @@ export default function FaturasUploadPage() {
               {pdfUrl ? (
                 <div className="border rounded-lg overflow-hidden h-[520px]">
                   <iframe
-                    src={pdfUrl}
+                    src={addTokenToUrl(pdfUrl)}
                     className="w-full h-full"
                     title="PDF Preview"
                   />

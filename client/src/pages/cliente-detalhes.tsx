@@ -55,7 +55,7 @@ import {
   BarChart3,
   Download,
 } from "lucide-react";
-import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
@@ -159,7 +159,7 @@ export default function ClienteDetalhesPage() {
     },
     onSuccess: (data) => {
       if (data.pdfUrl) {
-        window.open(data.pdfUrl, "_blank");
+        window.open(addTokenToUrl(data.pdfUrl), "_blank");
       }
       toast({ title: "Relatório gerado com sucesso!" });
     },

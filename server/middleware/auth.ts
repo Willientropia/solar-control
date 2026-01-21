@@ -81,6 +81,65 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 }
 
+/**
+ * Middleware: Requer autenticação JWT (aceita token via header OU query string)
+ *
+ * Similar ao requireAuth, mas também aceita token via query parameter ?token=xxx
+ * Útil para recursos que precisam ser acessados diretamente pelo navegador (PDFs, imagens, etc.)
+ *
+ * Uso:
+ *   app.get('/api/files/:id', requireAuthOrQuery, (req, res) => { ... });
+ */
+export function requireAuthOrQuery(req: Request, res: Response, next: NextFunction): void {
+  try {
+    let token: string | undefined;
+
+    // Tentar extrair token do header Authorization primeiro
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Remove "Bearer "
+    }
+
+    // Se não encontrou no header, tentar query string
+    if (!token && req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token;
+    }
+
+    if (!token) {
+      res.status(401).json({
+        error: 'Não autorizado',
+        message: 'Token de autenticação não fornecido',
+      });
+      return;
+    }
+
+    // Verificar token
+    const payload = AuthService.verifyAccessToken(token);
+
+    if (!payload) {
+      res.status(401).json({
+        error: 'Não autorizado',
+        message: 'Token inválido ou expirado',
+      });
+      return;
+    }
+
+    // Adicionar dados do usuário ao request
+    req.user = payload;
+    req.userId = payload.userId;
+    req.organizationId = payload.organizationId;
+    req.userRole = payload.role;
+
+    next();
+  } catch (error) {
+    console.error('Erro no middleware de autenticação:', error);
+    res.status(500).json({
+      error: 'Erro interno',
+      message: 'Erro ao verificar autenticação',
+    });
+  }
+}
+
 // ============ MIDDLEWARE DE AUTORIZAÇÃO (ROLES) ============
 
 /**
