@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useMutation } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { authenticatedFetch } from "@/lib/queryClient";
 
 interface ImportPreviewData {
   usinas: { criar: number; atualizar: number; erros: string[] };
@@ -50,7 +51,7 @@ export default function ConfiguracoesPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/admin/import/preview", {
+      const response = await authenticatedFetch("/api/admin/import/preview", {
         method: "POST",
         body: formData,
       });
@@ -83,7 +84,7 @@ export default function ConfiguracoesPage() {
       formData.append("file", file);
       formData.append("mode", importMode);
 
-      const response = await fetch("/api/admin/import", {
+      const response = await authenticatedFetch("/api/admin/import", {
         method: "POST",
         body: formData,
       });

@@ -44,7 +44,7 @@ import {
   Info,
   Save,
 } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { cn, parseToNumber, formatNumber, normalizeMonth } from "@/lib/utils";
 
@@ -264,10 +264,9 @@ export default function FaturasUploadPage() {
       formDataToSend.append("precoKwh", precoKwh || "0");
       formDataToSend.append("desconto", selectedUsina?.descontoPadrao || "25");
 
-      const response = await fetch("/api/faturas/extract", {
+      const response = await authenticatedFetch("/api/faturas/extract", {
         method: "POST",
         body: formDataToSend,
-        credentials: "include",
       });
 
       if (!response.ok) {
@@ -513,8 +512,8 @@ export default function FaturasUploadPage() {
         }
       });
 
-      // Use fetch directly to handle 409 conflicts without throwing
-      const response = await fetch("/api/faturas/confirm", {
+      // Use authenticatedFetch to handle 409 conflicts without throwing
+      const response = await authenticatedFetch("/api/faturas/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -522,7 +521,6 @@ export default function FaturasUploadPage() {
           clienteId: data.clienteId,
           forceReplace: data.forceReplace || false,
         }),
-        credentials: "include",
       });
 
       // Check if response is conflict (409)
@@ -884,7 +882,7 @@ export default function FaturasUploadPage() {
           }
         });
 
-        const response = await fetch("/api/faturas/confirm", {
+        const response = await authenticatedFetch("/api/faturas/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -892,7 +890,6 @@ export default function FaturasUploadPage() {
             clienteId: fatura.selectedClienteId,
             forceReplace: replaceAllDuplicates,
           }),
-          credentials: "include",
         });
 
         if (!response.ok) {

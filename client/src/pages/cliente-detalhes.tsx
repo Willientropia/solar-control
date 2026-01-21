@@ -55,7 +55,7 @@ import {
   BarChart3,
   Download,
 } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
@@ -144,11 +144,10 @@ export default function ClienteDetalhesPage() {
   // Generate relatório mutation
   const generateRelatorioMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/clientes/${clienteId}/generate-relatorio`, {
+      const response = await authenticatedFetch(`/api/clientes/${clienteId}/generate-relatorio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mesInicial, mesFinal }),
-        credentials: "include",
       });
 
       if (!response.ok) {

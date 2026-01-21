@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { FaturaFlowIndicators } from "./fatura-flow-indicators";
 import { formatCurrency, cn } from "@/lib/utils";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Fatura, Cliente } from "@shared/schema";
 import { Link } from "wouter";
@@ -196,9 +196,8 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
       console.log('============================================================');
       console.log('');
 
-      const response = await fetch(`/api/faturas/${fatura.id}/generate-pdf`, {
+      const response = await authenticatedFetch(`/api/faturas/${fatura.id}/generate-pdf`, {
         method: "POST",
-        credentials: "include",
       });
       if (!response.ok) {
         const error = await response.json();

@@ -4,7 +4,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 const TOKEN_KEY = 'solar_access_token';
 const REFRESH_TOKEN_KEY = 'solar_refresh_token';
 
-function getStoredToken(): string | null {
+export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
@@ -56,6 +56,53 @@ async function refreshAccessToken(): Promise<string | null> {
     console.error('Failed to refresh token:', error);
     return null;
   }
+}
+
+/**
+ * Helper function to make authenticated fetch requests
+ * Automatically adds Authorization header with JWT token
+ * Handles token refresh on 401 errors
+ */
+export async function authenticatedFetch(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const accessToken = getStoredToken();
+
+  // Merge headers, adding Authorization if token exists
+  const headers = new Headers(options.headers);
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
+  let response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
+
+  // If 401 Unauthorized, try to refresh token and retry
+  if (response.status === 401) {
+    const newToken = await refreshAccessToken();
+
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`);
+
+      response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include',
+      });
+    } else {
+      // Clear tokens and redirect to login
+      clearTokens();
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+  }
+
+  return response;
 }
 
 export async function apiRequest(
