@@ -42,7 +42,7 @@ import {
   Calculator,
   Info,
 } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, addTokenToUrl } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
 import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
@@ -606,7 +606,7 @@ export default function FaturasNewPage() {
             <div className="border rounded-lg overflow-hidden bg-muted/30">
               {editingFatura?.arquivoPdfUrl ? (
                 <iframe
-                  src={editingFatura.arquivoPdfUrl}
+                  src={addTokenToUrl(editingFatura.arquivoPdfUrl)}
                   className="w-full h-full"
                   title="PDF Preview"
                 />
