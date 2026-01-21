@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { FaturaStatusCard } from "./fatura-status-card";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import type { Usina, Cliente, Fatura } from "@shared/schema";
 
 interface UsinaSectionProps {
@@ -38,12 +38,11 @@ export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura
         throw new Error("Nenhuma fatura encontrada para baixar");
       }
 
-      const response = await fetch('/api/faturas/download-usina-zip', {
+      const response = await authenticatedFetch('/api/faturas/download-usina-zip', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           usinaId: usina.id,
           mesReferencia: mesReferencia,
