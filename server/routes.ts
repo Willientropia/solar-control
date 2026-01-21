@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { ExcelService } from "./services/excel-service";
 import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema } from "@shared/schema";
 import { z } from "zod";
@@ -11,7 +11,7 @@ import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import * as AuthService from "./services/auth-service";
-import { requireAuth, requireRole } from "./middleware/auth";
+import { requireAuth, requireRole, requireAdmin } from "./middleware/auth";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -86,21 +86,6 @@ async function extractPdfData(
       reject(err);
     });
   });
-}
-
-// Middleware to check if user is admin
-async function isAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = req.user as any;
-  if (!user?.claims?.sub) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  const profile = await storage.getUserProfile(user.claims.sub);
-  if (profile?.role !== "admin") {
-    return res.status(403).json({ message: "Forbidden: Admin access required" });
-  }
-
-  next();
 }
 
 // Helper to create audit log
@@ -334,9 +319,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Get user profile
-  app.get("/api/auth/profile", isAuthenticated, async (req: any, res) => {
+  app.get("/api/auth/profile", requireAuth, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       let profile = await storage.getUserProfile(userId);
       
       // Create default profile if doesn't exist
@@ -679,7 +664,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== DASHBOARD ====================
-  app.get("/api/dashboard/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     try {
       const stats = await storage.getDashboardStats();
       res.json(stats);
@@ -690,7 +675,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== USINAS ====================
-  app.get("/api/usinas", isAuthenticated, async (req, res) => {
+  app.get("/api/usinas", requireAuth, async (req, res) => {
     try {
       const usinas = await storage.getUsinas();
       res.json(usinas);
@@ -700,7 +685,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/usinas/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/usinas/:id", requireAuth, async (req, res) => {
     try {
       const usina = await storage.getUsina(req.params.id);
       if (!usina) {
@@ -713,11 +698,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/usinas", isAuthenticated, async (req: any, res) => {
+  app.post("/api/usinas", requireAuth, async (req: any, res) => {
     try {
       const data = insertUsinaSchema.parse(req.body);
       const usina = await storage.createUsina(data);
-      await logAction(req.user.claims.sub, "criar", "usina", usina.id, { nome: usina.nome });
+      await logAction(req.userId, "criar", "usina", usina.id, { nome: usina.nome });
       
       // Auto-create the usina's own UC as a non-paying client (UC matriz)
       const clienteMatriz = await storage.createCliente({
@@ -727,7 +712,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         desconto: usina.descontoPadrao,
         isPagante: false,
       });
-      await logAction(req.user.claims.sub, "criar", "cliente", clienteMatriz.id, { 
+      await logAction(req.userId, "criar", "cliente", clienteMatriz.id, { 
         nome: clienteMatriz.nome, 
         autoCreated: true,
         usinaId: usina.id 
@@ -743,14 +728,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/usinas/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/usinas/:id", requireAuth, async (req: any, res) => {
     try {
       const data = insertUsinaSchema.partial().parse(req.body);
       const usina = await storage.updateUsina(req.params.id, data);
       if (!usina) {
         return res.status(404).json({ message: "Usina not found" });
       }
-      await logAction(req.user.claims.sub, "editar", "usina", usina.id, { nome: usina.nome });
+      await logAction(req.userId, "editar", "usina", usina.id, { nome: usina.nome });
       res.json(usina);
     } catch (error) {
       console.error("Error updating usina:", error);
@@ -761,11 +746,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/usinas/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/usinas/:id", requireAuth, async (req: any, res) => {
     try {
       const usina = await storage.getUsina(req.params.id);
       await storage.deleteUsina(req.params.id);
-      await logAction(req.user.claims.sub, "excluir", "usina", req.params.id, { nome: usina?.nome });
+      await logAction(req.userId, "excluir", "usina", req.params.id, { nome: usina?.nome });
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting usina:", error);
@@ -774,7 +759,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== PREÇOS KWH ====================
-  app.get("/api/precos-kwh", isAuthenticated, async (req, res) => {
+  app.get("/api/precos-kwh", requireAuth, async (req, res) => {
     try {
       const precos = await storage.getPrecosKwh();
       res.json(precos);
@@ -785,7 +770,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Rotas específicas devem vir ANTES das rotas com :id
-  app.get("/api/precos-kwh/ultimo", isAuthenticated, async (req, res) => {
+  app.get("/api/precos-kwh/ultimo", requireAuth, async (req, res) => {
     try {
       const preco = await storage.getUltimoPrecoKwh();
       res.json(preco || null);
@@ -795,7 +780,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/precos-kwh/mes/:mesReferencia", isAuthenticated, async (req, res) => {
+  app.get("/api/precos-kwh/mes/:mesReferencia", requireAuth, async (req, res) => {
     try {
       // Normalizar mês para MAIÚSCULO antes de buscar
       const mesNormalizado = req.params.mesReferencia.toUpperCase();
@@ -810,7 +795,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/precos-kwh/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/precos-kwh/:id", requireAuth, async (req, res) => {
     try {
       const preco = await storage.getPrecoKwh(req.params.id);
       if (!preco) {
@@ -823,10 +808,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/precos-kwh", isAuthenticated, async (req: any, res) => {
+  app.post("/api/precos-kwh", requireAuth, async (req: any, res) => {
     try {
       const preco = await storage.createPrecoKwh(req.body);
-      await logAction(req.user.claims.sub, "criar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
+      await logAction(req.userId, "criar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
       res.status(201).json(preco);
     } catch (error: any) {
       console.error("Error creating preço kWh:", error);
@@ -838,13 +823,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/precos-kwh/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/precos-kwh/:id", requireAuth, async (req: any, res) => {
     try {
       const preco = await storage.updatePrecoKwh(req.params.id, req.body);
       if (!preco) {
         return res.status(404).json({ message: "Preço kWh not found" });
       }
-      await logAction(req.user.claims.sub, "editar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
+      await logAction(req.userId, "editar", "preco_kwh", preco.id, { mesReferencia: preco.mesReferencia });
       res.json(preco);
     } catch (error) {
       console.error("Error updating preço kWh:", error);
@@ -852,11 +837,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/precos-kwh/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/precos-kwh/:id", requireAuth, async (req: any, res) => {
     try {
       const preco = await storage.getPrecoKwh(req.params.id);
       await storage.deletePrecoKwh(req.params.id);
-      await logAction(req.user.claims.sub, "excluir", "preco_kwh", req.params.id, { mesReferencia: preco?.mesReferencia });
+      await logAction(req.userId, "excluir", "preco_kwh", req.params.id, { mesReferencia: preco?.mesReferencia });
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting preço kWh:", error);
@@ -865,7 +850,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== CLIENTES ====================
-  app.get("/api/clientes", isAuthenticated, async (req, res) => {
+  app.get("/api/clientes", requireAuth, async (req, res) => {
     try {
       const clientes = await storage.getClientes();
       res.json(clientes);
@@ -875,7 +860,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/clientes/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/clientes/:id", requireAuth, async (req, res) => {
     try {
       const cliente = await storage.getCliente(req.params.id);
       if (!cliente) {
@@ -888,7 +873,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/clientes/:id/detalhes", isAuthenticated, async (req, res) => {
+  app.get("/api/clientes/:id/detalhes", requireAuth, async (req, res) => {
     try {
       const clienteId = req.params.id;
 
@@ -954,11 +939,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
+  app.post("/api/clientes", requireAuth, async (req: any, res) => {
     try {
       const data = insertClienteSchema.parse(req.body);
       const cliente = await storage.createCliente(data);
-      await logAction(req.user.claims.sub, "criar", "cliente", cliente.id, { nome: cliente.nome });
+      await logAction(req.userId, "criar", "cliente", cliente.id, { nome: cliente.nome });
       res.status(201).json(cliente);
     } catch (error) {
       console.error("Error creating cliente:", error);
@@ -969,14 +954,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/clientes/:id", requireAuth, async (req: any, res) => {
     try {
       const data = insertClienteSchema.partial().parse(req.body);
       const cliente = await storage.updateCliente(req.params.id, data);
       if (!cliente) {
         return res.status(404).json({ message: "Cliente not found" });
       }
-      await logAction(req.user.claims.sub, "editar", "cliente", cliente.id, { nome: cliente.nome });
+      await logAction(req.userId, "editar", "cliente", cliente.id, { nome: cliente.nome });
       res.json(cliente);
     } catch (error) {
       console.error("Error updating cliente:", error);
@@ -987,11 +972,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/clientes/:id", requireAuth, async (req: any, res) => {
     try {
       const cliente = await storage.getCliente(req.params.id);
       await storage.deleteCliente(req.params.id);
-      await logAction(req.user.claims.sub, "excluir", "cliente", req.params.id, { nome: cliente?.nome });
+      await logAction(req.userId, "excluir", "cliente", req.params.id, { nome: cliente?.nome });
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting cliente:", error);
@@ -1000,7 +985,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== FATURAS ====================
-  app.get("/api/faturas", isAuthenticated, async (req, res) => {
+  app.get("/api/faturas", requireAuth, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const usinaId = req.query.usinaId as string | undefined;
@@ -1019,7 +1004,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/faturas/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/faturas/:id", requireAuth, async (req, res) => {
     try {
       const fatura = await storage.getFatura(req.params.id);
       if (!fatura) {
@@ -1033,7 +1018,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Extract data from PDF - returns data for verification
-  app.post("/api/faturas/extract", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/faturas/extract", requireAuth, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "PDF file is required" });
@@ -1064,7 +1049,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Serve PDF files for preview (supports nested paths)
-  app.get("/api/faturas/pdf/*", isAuthenticated, (req, res) => {
+  app.get("/api/faturas/pdf/*", requireAuth, (req, res) => {
     // Extract the path after /api/faturas/pdf/
     const relativePath = req.params[0];
     const filePath = path.join(uploadDir, relativePath);
@@ -1151,7 +1136,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }
 
   // Confirm and save extracted fatura
-  app.post("/api/faturas/confirm", isAuthenticated, async (req: any, res) => {
+  app.post("/api/faturas/confirm", requireAuth, async (req: any, res) => {
     try {
       const { extractedData, clienteId, usinaId, forceReplace } = req.body;
 
@@ -1355,14 +1340,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         lucro: normalizedData.lucro,
         status: "aguardando_pagamento", // Update status to waiting for payment
         arquivoPdfUrl: organizedFileUrl, // Save the organized PDF URL
-        createdBy: req.user.claims.sub,
+        createdBy: req.userId,
         dadosExtraidos: normalizedData,
       };
 
       if (existingFatura) {
         // Update existing fatura
         fatura = await storage.updateFatura(existingFatura.id, faturaData);
-        await logAction(req.user.claims.sub, "editar", "fatura", existingFatura.id, {
+        await logAction(req.userId, "editar", "fatura", existingFatura.id, {
           clienteId,
           mesReferencia: extractedData.mesReferencia,
           unidadeConsumidora: extractedData.unidadeConsumidora,
@@ -1371,7 +1356,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         // Create new fatura
         fatura = await storage.createFatura(faturaData);
-        await logAction(req.user.claims.sub, "criar", "fatura", fatura.id, {
+        await logAction(req.userId, "criar", "fatura", fatura.id, {
           clienteId,
           mesReferencia: extractedData.mesReferencia,
           unidadeConsumidora: extractedData.unidadeConsumidora,
@@ -1386,7 +1371,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Legacy upload endpoint (creates faturas for all clients of a usina)
-  app.post("/api/faturas/upload", isAuthenticated, async (req: any, res) => {
+  app.post("/api/faturas/upload", requireAuth, async (req: any, res) => {
     try {
       const { usinaId, precoKwh } = req.body;
       
@@ -1422,12 +1407,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           economia: economia.toFixed(2),
           lucro: lucro.toFixed(2),
           status: "pendente",
-          createdBy: req.user.claims.sub,
+          createdBy: req.userId,
         });
         processedCount++;
       }
 
-      await logAction(req.user.claims.sub, "upload", "fatura", undefined, { usinaId, processedCount });
+      await logAction(req.userId, "upload", "fatura", undefined, { usinaId, processedCount });
       res.json({ processedCount, message: "Faturas criadas com sucesso" });
     } catch (error) {
       console.error("Error uploading faturas:", error);
@@ -1436,7 +1421,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Full edit of a fatura
-  app.patch("/api/faturas/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const updateData = req.body;
@@ -1494,7 +1479,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         lucro: fatura.lucro
       });
 
-      await logAction(req.user.claims.sub, "editar", "fatura", fatura.id, { fields: Object.keys(updateData) });
+      await logAction(req.userId, "editar", "fatura", fatura.id, { fields: Object.keys(updateData) });
       res.json(fatura);
     } catch (error) {
       console.error("Error updating fatura:", error);
@@ -1503,7 +1488,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/faturas/:id/status", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id/status", requireAuth, async (req: any, res) => {
     try {
       const { status } = req.body;
       
@@ -1514,7 +1499,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Permission Check
-      const userProfile = await storage.getUserProfile(req.user.claims.sub);
+      const userProfile = await storage.getUserProfile(req.userId);
       const userRole = userProfile?.role || "operador";
 
       if (status === "pago" && userRole !== "admin") {
@@ -1526,7 +1511,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "Fatura not found" });
       }
       
-      await logAction(req.user.claims.sub, "processar", "fatura", fatura.id, { status });
+      await logAction(req.userId, "processar", "fatura", fatura.id, { status });
       res.json(fatura);
     } catch (error) {
       console.error("Error updating fatura status:", error);
@@ -1534,10 +1519,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/faturas/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/faturas/:id", requireAuth, async (req: any, res) => {
     try {
       await storage.deleteFatura(req.params.id);
-      await logAction(req.user.claims.sub, "excluir", "fatura", req.params.id);
+      await logAction(req.userId, "excluir", "fatura", req.params.id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting fatura:", error);
@@ -1546,7 +1531,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Generate PDF invoice
-  app.post("/api/faturas/:id/generate-pdf", isAuthenticated, async (req: any, res) => {
+  app.post("/api/faturas/:id/generate-pdf", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const fatura = await storage.getFatura(faturaId);
@@ -1635,7 +1620,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           // Retornar URL do PDF gerado (não salva no DB, sempre gera sob demanda)
           const pdfUrl = `/uploads/faturas_geradas/${outputFilename}`;
-          await logAction(req.user.claims.sub, "gerar_pdf", "fatura", faturaId);
+          await logAction(req.userId, "gerar_pdf", "fatura", faturaId);
 
           res.json({ success: true, pdfUrl });
         } catch (e) {
@@ -1650,7 +1635,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Download all faturas com desconto de uma usina em ZIP
-  app.post("/api/faturas/download-usina-zip", isAuthenticated, async (req: any, res) => {
+  app.post("/api/faturas/download-usina-zip", requireAuth, async (req: any, res) => {
     try {
       const { usinaId, mesReferencia } = req.body;
 
@@ -1789,7 +1774,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Generate cliente economia relatório
-  app.post("/api/clientes/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
+  app.post("/api/clientes/:id/generate-relatorio", requireAuth, async (req: any, res) => {
     try {
       const clienteId = req.params.id;
       const { mesInicial, mesFinal } = req.body;
@@ -1909,7 +1894,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
 
           const pdfUrl = `/uploads/relatorios_clientes/${outputFilename}`;
-          await logAction(req.user.claims.sub, "gerar_relatorio", "cliente", clienteId);
+          await logAction(req.userId, "gerar_relatorio", "cliente", clienteId);
 
           res.json({ success: true, pdfUrl });
         } catch (e) {
@@ -1924,7 +1909,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Mark invoice as sent to client
-  app.patch("/api/faturas/:id/marcar-enviada", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id/marcar-enviada", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const fatura = await storage.getFatura(faturaId);
@@ -1937,7 +1922,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         faturaClienteEnviadaAt: new Date()
       });
 
-      await logAction(req.user.claims.sub, "marcar_enviada", "fatura", faturaId);
+      await logAction(req.userId, "marcar_enviada", "fatura", faturaId);
 
       res.json({ success: true, message: "Fatura marcada como enviada ao cliente" });
     } catch (error: any) {
@@ -1947,7 +1932,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Mark invoice as received from client
-  app.patch("/api/faturas/:id/marcar-recebida", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id/marcar-recebida", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const fatura = await storage.getFatura(faturaId);
@@ -1960,7 +1945,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         faturaClienteRecebidaAt: new Date()
       });
 
-      await logAction(req.user.claims.sub, "marcar_recebida", "fatura", faturaId);
+      await logAction(req.userId, "marcar_recebida", "fatura", faturaId);
 
       res.json({ success: true, message: "Fatura marcada como recebida do cliente" });
     } catch (error: any) {
@@ -1970,7 +1955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Unmark invoice as sent
-  app.patch("/api/faturas/:id/desmarcar-enviada", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id/desmarcar-enviada", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const fatura = await storage.getFatura(faturaId);
@@ -1983,7 +1968,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         faturaClienteEnviadaAt: null
       });
 
-      await logAction(req.user.claims.sub, "desmarcar_enviada", "fatura", faturaId);
+      await logAction(req.userId, "desmarcar_enviada", "fatura", faturaId);
 
       res.json({ success: true, message: "Fatura desmarcada como enviada" });
     } catch (error: any) {
@@ -1993,7 +1978,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Unmark invoice as received
-  app.patch("/api/faturas/:id/desmarcar-recebida", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/faturas/:id/desmarcar-recebida", requireAuth, async (req: any, res) => {
     try {
       const faturaId = req.params.id;
       const fatura = await storage.getFatura(faturaId);
@@ -2006,7 +1991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         faturaClienteRecebidaAt: null
       });
 
-      await logAction(req.user.claims.sub, "desmarcar_recebida", "fatura", faturaId);
+      await logAction(req.userId, "desmarcar_recebida", "fatura", faturaId);
 
       res.json({ success: true, message: "Fatura desmarcada como recebida" });
     } catch (error: any) {
@@ -2029,7 +2014,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }
 
   // Generate Usina Report PDF
-  app.post("/api/usinas/:id/generate-relatorio", isAuthenticated, async (req: any, res) => {
+  app.post("/api/usinas/:id/generate-relatorio", requireAuth, async (req: any, res) => {
     try {
       const usinaId = req.params.id;
       const { meses } = req.body; // Array of months like ["Jan/2026", "Fev/2026"]
@@ -2164,7 +2149,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
           
           const pdfUrl = `/uploads/relatorios/${outputFilename}`;
-          await logAction(req.user.claims.sub, "gerar_relatorio", "usina", usinaId, { periodo });
+          await logAction(req.userId, "gerar_relatorio", "usina", usinaId, { periodo });
           
           res.json({ success: true, pdfUrl });
         } catch (e) {
@@ -2200,7 +2185,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }
 
   // ==================== GERAÇÃO MENSAL ====================
-  app.get("/api/geracao", isAuthenticated, async (req, res) => {
+  app.get("/api/geracao", requireAuth, async (req, res) => {
     try {
       const geracoes = await storage.getGeracoes();
       res.json(geracoes);
@@ -2235,7 +2220,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/geracao/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/geracao/:id", requireAuth, async (req: any, res) => {
     try {
       const id = req.params.id;
       // Note: storage.deleteGeracao might not exist yet, need to check storage.ts
@@ -2243,7 +2228,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // For now assuming I need to check storage.ts first. 
       // But let's add the route structure.
       await storage.deleteGeracao(id); 
-      await logAction(req.user.claims.sub, "excluir", "geracao", id);
+      await logAction(req.userId, "excluir", "geracao", id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting geracao:", error);
@@ -2251,7 +2236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/geracao", isAuthenticated, async (req: any, res) => {
+  app.post("/api/geracao", requireAuth, async (req: any, res) => {
     try {
       const body = req.body;
       if (body.mesReferencia) {
@@ -2260,10 +2245,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       const data = insertGeracaoMensalSchema.parse({
         ...body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.userId,
       });
       const geracao = await storage.createGeracao(data);
-      await logAction(req.user.claims.sub, "criar", "geracao", geracao.id, { 
+      await logAction(req.userId, "criar", "geracao", geracao.id, { 
         usinaId: geracao.usinaId,
         mesReferencia: geracao.mesReferencia,
         kwhGerado: geracao.kwhGerado
@@ -2278,7 +2263,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/geracao/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/geracao/:id", requireAuth, async (req: any, res) => {
     try {
       const body = req.body;
       if (body.mesReferencia) {
@@ -2290,7 +2275,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!geracao) {
         return res.status(404).json({ message: "Geracao not found" });
       }
-      await logAction(req.user.claims.sub, "editar", "geracao", geracao.id);
+      await logAction(req.userId, "editar", "geracao", geracao.id);
       res.json(geracao);
     } catch (error) {
       console.error("Error updating geracao:", error);
@@ -2301,10 +2286,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/geracao/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/geracao/:id", requireAuth, async (req: any, res) => {
     try {
       await storage.deleteGeracao(req.params.id);
-      await logAction(req.user.claims.sub, "excluir", "geracao", req.params.id);
+      await logAction(req.userId, "excluir", "geracao", req.params.id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting geracao:", error);
@@ -2313,7 +2298,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== RELATÓRIOS (Admin Only) ====================
-  app.get("/api/relatorios", isAuthenticated, isAdmin, async (req, res) => {
+  app.get("/api/relatorios", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { usinaId, periodo } = req.query;
       
@@ -2377,7 +2362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== AUDITORIA (Admin Only) ====================
-  app.get("/api/auditoria", isAuthenticated, isAdmin, async (req, res) => {
+  app.get("/api/auditoria", requireAuth, requireAdmin, async (req, res) => {
     try {
       const logs = await storage.getAuditLogs(200);
       res.json(logs);
@@ -2388,7 +2373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== USUÁRIOS (Admin Only) ====================
-  app.get("/api/usuarios", isAuthenticated, isAdmin, async (req, res) => {
+  app.get("/api/usuarios", requireAuth, requireAdmin, async (req, res) => {
     try {
       const usuarios = await storage.getUsersWithProfiles();
       res.json(usuarios);
@@ -2398,7 +2383,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/usuarios/:id/role", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.patch("/api/usuarios/:id/role", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const { role } = req.body;
       if (!["admin", "operador"].includes(role)) {
@@ -2410,7 +2395,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         role,
       });
 
-      await logAction(req.user.claims.sub, "editar", "usuario", req.params.id, { role });
+      await logAction(req.userId, "editar", "usuario", req.params.id, { role });
       res.json(profile);
     } catch (error) {
       console.error("Error updating user role:", error);
@@ -2419,7 +2404,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Maintenance: Cleanup old PDF files (30 days after upload)
-  app.post("/api/maintenance/cleanup-pdfs", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.post("/api/maintenance/cleanup-pdfs", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const allFaturas = await storage.getFaturas();
       const now = new Date();
@@ -2457,7 +2442,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      await logAction(req.user.claims.sub, "cleanup", "pdf", undefined, { cleanedCount });
+      await logAction(req.userId, "cleanup", "pdf", undefined, { cleanedCount });
       res.json({
         message: `Limpeza de PDFs concluída. ${cleanedCount} arquivos expirados removidos.`,
         cleanedCount
@@ -2469,7 +2454,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Maintenance: Cleanup old faturas
-  app.delete("/api/maintenance/cleanup", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.delete("/api/maintenance/cleanup", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const allFaturas = await storage.getFaturas();
       const today = new Date();
@@ -2502,7 +2487,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      await logAction(req.user.claims.sub, "cleanup", "fatura", undefined, { deletedCount });
+      await logAction(req.userId, "cleanup", "fatura", undefined, { deletedCount });
       res.json({ message: `Limpeza concluída. ${deletedCount} faturas antigas removidas.` });
     } catch (error: any) {
       console.error("Error cleaning up faturas:", error);
@@ -2542,7 +2527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export all data to Excel
-  app.get("/api/admin/export/all", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/all", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const usinaId = req.query.usinaId as string | undefined;
       const mesReferencia = req.query.mesReferencia as string | undefined;
@@ -2566,7 +2551,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "all", undefined, { filename, usinaId, mesReferencia });
+      await logAction(req.userId, "export", "all", undefined, { filename, usinaId, mesReferencia });
     } catch (error: any) {
       console.error("Error exporting data:", error);
       res.status(500).json({ message: "Erro ao exportar dados", error: error.message });
@@ -2574,7 +2559,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export only Usinas
-  app.get("/api/admin/export/usinas", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/usinas", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const workbook = await ExcelService.exportAllData({
         includeUsinas: true,
@@ -2593,7 +2578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "usinas", undefined, { filename });
+      await logAction(req.userId, "export", "usinas", undefined, { filename });
     } catch (error: any) {
       console.error("Error exporting usinas:", error);
       res.status(500).json({ message: "Erro ao exportar usinas", error: error.message });
@@ -2601,7 +2586,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export only Clientes
-  app.get("/api/admin/export/clientes", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/clientes", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const workbook = await ExcelService.exportAllData({
         includeUsinas: false,
@@ -2620,7 +2605,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "clientes", undefined, { filename });
+      await logAction(req.userId, "export", "clientes", undefined, { filename });
     } catch (error: any) {
       console.error("Error exporting clientes:", error);
       res.status(500).json({ message: "Erro ao exportar clientes", error: error.message });
@@ -2628,7 +2613,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export only Faturas
-  app.get("/api/admin/export/faturas", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/faturas", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const workbook = await ExcelService.exportAllData({
         includeUsinas: false,
@@ -2647,7 +2632,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "faturas", undefined, { filename });
+      await logAction(req.userId, "export", "faturas", undefined, { filename });
     } catch (error: any) {
       console.error("Error exporting faturas:", error);
       res.status(500).json({ message: "Erro ao exportar faturas", error: error.message });
@@ -2655,7 +2640,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export only Geração Mensal
-  app.get("/api/admin/export/geracao", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/geracao", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const workbook = await ExcelService.exportAllData({
         includeUsinas: false,
@@ -2674,7 +2659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "geracao", undefined, { filename });
+      await logAction(req.userId, "export", "geracao", undefined, { filename });
     } catch (error: any) {
       console.error("Error exporting geracao:", error);
       res.status(500).json({ message: "Erro ao exportar geração mensal", error: error.message });
@@ -2682,7 +2667,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Export only Preços kWh
-  app.get("/api/admin/export/precos", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/export/precos", requireAuth, requireAdmin, async (req: any, res) => {
     try {
       const workbook = await ExcelService.exportAllData({
         includeUsinas: false,
@@ -2701,7 +2686,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await workbook.xlsx.write(res);
       res.end();
 
-      await logAction(req.user.claims.sub, "export", "precos", undefined, { filename });
+      await logAction(req.userId, "export", "precos", undefined, { filename });
     } catch (error: any) {
       console.error("Error exporting precos:", error);
       res.status(500).json({ message: "Erro ao exportar preços kWh", error: error.message });
@@ -2709,7 +2694,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Preview import (validation only, no save)
-  app.post("/api/admin/import/preview", isAuthenticated, isAdmin, excelUpload.single('file'), async (req: any, res) => {
+  app.post("/api/admin/import/preview", requireAuth, requireAdmin, excelUpload.single('file'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
@@ -2728,7 +2713,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Import data from Excel
-  app.post("/api/admin/import", isAuthenticated, isAdmin, excelUpload.single('file'), async (req: any, res) => {
+  app.post("/api/admin/import", requireAuth, requireAdmin, excelUpload.single('file'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
@@ -2742,7 +2727,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await ExcelService.importFromExcel(req.file.path, { mode });
 
       // Keep file for audit purposes (don't delete)
-      await logAction(req.user.claims.sub, "import", "all", undefined, {
+      await logAction(req.userId, "import", "all", undefined, {
         filename: req.file.filename,
         mode,
         result
