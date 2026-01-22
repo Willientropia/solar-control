@@ -112,7 +112,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/faturas/${fatura.id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Status atualizado" });
       onRefresh?.();
     },
@@ -124,7 +124,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const marcarEnviadaMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/marcar-enviada`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Fatura marcada como enviada" });
       onRefresh?.();
     },
@@ -133,7 +133,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const desmarcarEnviadaMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/desmarcar-enviada`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Envio desmarcado" });
       onRefresh?.();
     },
@@ -142,7 +142,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const marcarRecebidaMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/marcar-recebida`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Fatura marcada como recebida" });
       onRefresh?.();
     },
@@ -151,7 +151,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const desmarcarRecebidaMutation = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/desmarcar-recebida`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Recebimento desmarcado" });
       onRefresh?.();
     },
@@ -231,7 +231,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   const deleteMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/faturas/${fatura.id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({ title: "Fatura removida" });
       onRefresh?.();
     },

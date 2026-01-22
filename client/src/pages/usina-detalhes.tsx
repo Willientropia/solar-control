@@ -201,7 +201,7 @@ export default function UsinaDetalhesPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({
         title: "Fatura atualizada!",
         description: "Os dados foram salvos com sucesso.",
@@ -226,7 +226,7 @@ export default function UsinaDetalhesPage() {
     },
     onSuccess: (data) => {
       setGeneratingPdfId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
       toast({
         title: "PDF gerado!",
         description: "A fatura foi gerada com sucesso.",

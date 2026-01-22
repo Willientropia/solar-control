@@ -161,7 +161,11 @@ export default function FaturasNewPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      // Force refetch of all queries related to faturas
+      queryClient.invalidateQueries({
+        queryKey: ["/api/faturas"],
+        refetchType: 'all' // Force refetch even with staleTime: Infinity
+      });
       toast({ title: "Fatura atualizada!", description: "As alterações foram salvas com sucesso." });
       setEditingFatura(null);
       setEditFormData({});
