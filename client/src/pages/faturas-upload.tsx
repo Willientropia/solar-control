@@ -535,7 +535,11 @@ export default function FaturasUploadPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+      // Force refetch of all queries related to faturas (including with filters)
+      queryClient.invalidateQueries({
+        queryKey: ["/api/faturas"],
+        refetchType: 'all' // Force refetch even with staleTime: Infinity
+      });
 
       // Mark current fatura as saved
       updateCurrentFatura({ saved: true });
@@ -939,8 +943,11 @@ export default function FaturasUploadPage() {
       }
     }
 
-    // Invalidate queries after all saves
-    queryClient.invalidateQueries({ queryKey: ["/api/faturas"] });
+    // Invalidate queries after all saves and force refetch
+    queryClient.invalidateQueries({
+      queryKey: ["/api/faturas"],
+      refetchType: 'all' // Force refetch even with staleTime: Infinity
+    });
 
     setIsSavingAll(false);
     setSaveAllProgress({ current: 0, total: 0 });
