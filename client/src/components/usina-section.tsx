@@ -57,15 +57,22 @@ export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura
       // Get the blob from response
       const blob = await response.blob();
 
-      // Create download link
+      // Create download link using a safer approach that doesn't require DOM manipulation
+      // This avoids "Failed to execute 'removeChild' on 'Node'" errors
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `faturas_${mesReferencia.replace('/', '_')}.zip`;
-      document.body.appendChild(a);
+      a.style.display = 'none';
+
+      // Use click() directly without appending to DOM
+      // Modern browsers support this approach
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+
+      // Clean up the object URL after a small delay to ensure download starts
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 100);
     },
     onSuccess: () => {
       toast({
