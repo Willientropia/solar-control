@@ -26,6 +26,7 @@ import RelatoriosPage from "@/pages/relatorios";
 import AuditoriaPage from "@/pages/auditoria";
 import ConfiguracoesPage from "@/pages/configuracoes";
 import UsuariosPage from "@/pages/usuarios";
+import SimulacaoPage from "@/pages/simulacao";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -163,6 +164,9 @@ function Router() {
       </Route>
       <Route path="/precos-kwh">
         <ProtectedRoute component={PrecosKwhPage} />
+      </Route>
+      <Route path="/simulacao">
+        <ProtectedRoute component={SimulacaoPage} />
       </Route>
       <Route path="/usuarios">
         <ProtectedRoute component={UsuariosPage} adminOnly />
