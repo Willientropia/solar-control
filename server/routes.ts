@@ -2793,5 +2793,253 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ==================== IMPORTAÇÃO DE HISTÓRICO DE FATURAS ====================
+  // Import historical invoice data from CSV/Excel (admin only)
+  app.post("/api/admin/import/historico-faturas", requireAuth, requireAdmin, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
+      }
+
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(req.file.path);
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "Arquivo não contém planilhas" });
+      }
+
+      // Mapear cabeçalhos da primeira linha
+      const headerRow = worksheet.getRow(1);
+      const headers: Record<string, number> = {};
+      headerRow.eachCell((cell: any, colNumber: number) => {
+        const headerText = String(cell.value || '').trim().toLowerCase();
+        headers[headerText] = colNumber;
+      });
+
+      // Mapeamento de colunas esperadas
+      const columnMapping: Record<string, string[]> = {
+        'cpfCnpj': ['cpf/cnpj', 'cpf', 'cnpj', 'cpf_cnpj'],
+        'consumoKwh': ['consumo (kwh)', 'consumo kwh', 'consumo'],
+        'valorTotal': ['valor total', 'valortotal', 'valor_total'],
+        'saldoKwh': ['saldo (kwh)', 'saldo kwh', 'saldo'],
+        'nomeCliente': ['nome do cliente', 'nome cliente', 'nome', 'cliente'],
+        'endereco': ['endereço', 'endereco', 'end'],
+        'unidadeConsumidora': ['unidade consumidora', 'uc', 'unidadeconsumidora'],
+        'leituraAnterior': ['leitura anterior', 'leituraanterior'],
+        'leituraAtual': ['leitura atual', 'leituraatual'],
+        'quantidadeDias': ['quantidade de dias', 'qtd dias', 'dias', 'quantidadedias'],
+        'mesReferencia': ['mês de referência', 'mes de referencia', 'mesreferencia', 'mes'],
+        'dataVencimento': ['data de vencimento', 'vencimento', 'datavencimento'],
+        'contribuicaoIluminacao': ['contribuição de iluminação pública', 'iluminacao', 'cosip', 'contribuicaoiluminacao'],
+        'energiaInjetada': ['energia injetada', 'energiainjetada', 'injetada'],
+        'precoEnergiaInjetada': ['preço da energia injetada', 'precoenergiainjetada'],
+        'consumoScee': ['consumo scee', 'scee', 'consumoscee'],
+        'precoEnergiaCompensada': ['preço da energia compensada', 'precoenergiacompensada'],
+        'precoFioB': ['preço do fio b', 'fio b', 'precofiob'],
+        'consumoNaoCompensado': ['consumo não compensado', 'nao compensado', 'consumonaocompensado'],
+        'precoKwhNaoCompensado': ['preço do kwh não compensado', 'precokwhnaocompensado'],
+        'precoAdcBandeira': ['preço do adc bandeira', 'bandeira', 'precoadcbandeira'],
+        'cicloGeracao': ['ciclo de geração', 'ciclo geracao', 'ciclogeracao'],
+        'ucGeradora': ['uc geradora', 'ucgeradora'],
+        'geracaoUltimoCiclo': ['geração do último ciclo', 'geracao ultimo ciclo', 'geracaoultimociclo'],
+        'valorSemDesconto': ['sem a solar', 'valor sem desconto', 'semasolar', 'valorsemddesconto'],
+        'valorComDesconto': ['com desconto', 'valor com desconto', 'comdesconto', 'valorcomdesconto'],
+        'economia': ['desconto em r$', 'economia', 'desconto r$', 'descontor$'],
+      };
+
+      // Encontrar índice de cada coluna
+      const colIndex: Record<string, number | null> = {};
+      for (const [field, aliases] of Object.entries(columnMapping)) {
+        colIndex[field] = null;
+        for (const alias of aliases) {
+          if (headers[alias]) {
+            colIndex[field] = headers[alias];
+            break;
+          }
+        }
+      }
+
+      // Verificar colunas obrigatórias
+      if (!colIndex['unidadeConsumidora'] && !colIndex['cpfCnpj']) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          message: "Arquivo deve conter coluna 'Unidade Consumidora' ou 'CPF/CNPJ' para identificar o cliente"
+        });
+      }
+
+      if (!colIndex['mesReferencia']) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          message: "Arquivo deve conter coluna 'Mês de Referência'"
+        });
+      }
+
+      // Processar linhas de dados
+      const results = {
+        sucesso: 0,
+        erros: [] as string[],
+        clientesNaoEncontrados: [] as string[],
+        duplicados: 0,
+      };
+
+      const clientes = await storage.getClientes();
+
+      // Helper para extrair valor da célula
+      const getCellValue = (row: any, colNum: number | null): string => {
+        if (!colNum) return '';
+        const cell = row.getCell(colNum);
+        return String(cell.value || '').trim();
+      };
+
+      // Helper para parsear números (aceita vírgula como decimal)
+      const parseNumber = (value: string): string => {
+        if (!value) return '0';
+        // Remove espaços e substitui vírgula por ponto
+        const cleaned = value.replace(/\s/g, '').replace(',', '.');
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? '0' : num.toFixed(2);
+      };
+
+      // Helper para parsear preços com 6 decimais
+      const parsePrice = (value: string): string => {
+        if (!value) return '0';
+        const cleaned = value.replace(/\s/g, '').replace(',', '.');
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? '0' : num.toFixed(6);
+      };
+
+      // Helper para normalizar mês de referência
+      const normalizeMonth = (value: string): string => {
+        if (!value) return '';
+        // Converte para maiúsculo e padroniza formato
+        return value.toUpperCase().trim();
+      };
+
+      // Iterar pelas linhas de dados (a partir da linha 2)
+      for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+        const row = worksheet.getRow(rowNum);
+
+        // Pular linhas vazias
+        const uc = getCellValue(row, colIndex['unidadeConsumidora']);
+        const cpf = getCellValue(row, colIndex['cpfCnpj']);
+        const mesRef = getCellValue(row, colIndex['mesReferencia']);
+
+        if (!uc && !cpf) continue;
+        if (!mesRef) continue;
+
+        // Encontrar cliente pela UC ou CPF
+        let cliente = null;
+        if (uc) {
+          cliente = clientes.find(c => c.unidadeConsumidora === uc);
+        }
+        if (!cliente && cpf) {
+          cliente = clientes.find(c => c.cpfCnpj === cpf);
+        }
+
+        if (!cliente) {
+          const identifier = uc || cpf;
+          if (!results.clientesNaoEncontrados.includes(identifier)) {
+            results.clientesNaoEncontrados.push(identifier);
+          }
+          results.erros.push(`Linha ${rowNum}: Cliente não encontrado (UC: ${uc || 'N/A'}, CPF: ${cpf || 'N/A'})`);
+          continue;
+        }
+
+        // Normalizar mês de referência
+        const mesReferencia = normalizeMonth(mesRef);
+
+        // Verificar se já existe fatura para esse cliente/mês
+        const faturasExistentes = await storage.getFaturasByCliente(cliente.id);
+        const faturaExistente = faturasExistentes.find(f =>
+          f.mesReferencia.toUpperCase() === mesReferencia
+        );
+
+        if (faturaExistente) {
+          results.duplicados++;
+          continue; // Pula duplicados sem erro
+        }
+
+        // Montar dados da fatura
+        const faturaData = {
+          clienteId: cliente.id,
+          usinaId: cliente.usinaId,
+          mesReferencia: mesReferencia,
+          dataVencimento: getCellValue(row, colIndex['dataVencimento']) || null,
+          consumoScee: parseNumber(getCellValue(row, colIndex['consumoScee'])),
+          consumoNaoCompensado: parseNumber(getCellValue(row, colIndex['consumoNaoCompensado'])),
+          energiaInjetada: parseNumber(getCellValue(row, colIndex['energiaInjetada'])),
+          saldoKwh: parseNumber(getCellValue(row, colIndex['saldoKwh'])),
+          contribuicaoIluminacao: parseNumber(getCellValue(row, colIndex['contribuicaoIluminacao'])),
+          precoKwh: parsePrice(getCellValue(row, colIndex['precoKwhNaoCompensado'])),
+          precoAdcBandeira: parsePrice(getCellValue(row, colIndex['precoAdcBandeira'])),
+          precoFioB: parsePrice(getCellValue(row, colIndex['precoFioB'])),
+          valorTotal: parseNumber(getCellValue(row, colIndex['valorTotal'])),
+          valorSemDesconto: parseNumber(getCellValue(row, colIndex['valorSemDesconto'])),
+          valorComDesconto: parseNumber(getCellValue(row, colIndex['valorComDesconto'])),
+          economia: parseNumber(getCellValue(row, colIndex['economia'])),
+          lucro: '0', // Será calculado se necessário
+          status: 'pago', // Histórico assume que já foi pago
+          dadosExtraidos: {
+            importadoHistorico: true,
+            dataImportacao: new Date().toISOString(),
+            leituraAnterior: getCellValue(row, colIndex['leituraAnterior']),
+            leituraAtual: getCellValue(row, colIndex['leituraAtual']),
+            quantidadeDias: getCellValue(row, colIndex['quantidadeDias']),
+            consumoKwh: getCellValue(row, colIndex['consumoKwh']),
+            precoEnergiaInjetada: getCellValue(row, colIndex['precoEnergiaInjetada']),
+            precoEnergiaCompensada: getCellValue(row, colIndex['precoEnergiaCompensada']),
+            cicloGeracao: getCellValue(row, colIndex['cicloGeracao']),
+            ucGeradora: getCellValue(row, colIndex['ucGeradora']),
+            geracaoUltimoCiclo: getCellValue(row, colIndex['geracaoUltimoCiclo']),
+            nomeCliente: getCellValue(row, colIndex['nomeCliente']),
+            endereco: getCellValue(row, colIndex['endereco']),
+            cpfCnpj: cpf,
+          },
+          // Marcar como já processada para histórico
+          faturaClienteGeradaAt: new Date(),
+          faturaClienteEnviadaAt: new Date(),
+          faturaClienteRecebidaAt: new Date(),
+        };
+
+        // Calcular lucro se temos valorComDesconto e valorTotal
+        const valorComDesconto = parseFloat(faturaData.valorComDesconto);
+        const valorTotal = parseFloat(faturaData.valorTotal);
+        if (valorComDesconto > 0 && valorTotal > 0) {
+          faturaData.lucro = (valorComDesconto - valorTotal).toFixed(2);
+        }
+
+        try {
+          await storage.createFatura(faturaData);
+          results.sucesso++;
+        } catch (error: any) {
+          results.erros.push(`Linha ${rowNum}: Erro ao salvar - ${error.message}`);
+        }
+      }
+
+      // Limpar arquivo temporário
+      fs.unlinkSync(req.file.path);
+
+      await logAction(req.userId, "import_historico", "faturas", undefined, {
+        filename: req.file.filename,
+        ...results
+      });
+
+      res.json({
+        message: `Importação concluída: ${results.sucesso} faturas importadas`,
+        sucesso: results.sucesso,
+        duplicados: results.duplicados,
+        erros: results.erros.slice(0, 20), // Limitar erros retornados
+        totalErros: results.erros.length,
+        clientesNaoEncontrados: results.clientesNaoEncontrados,
+      });
+    } catch (error: any) {
+      console.error("Error importing historical invoices:", error);
+      res.status(500).json({ message: "Erro ao importar histórico", error: error.message });
+    }
+  });
+
   return httpServer;
 }
