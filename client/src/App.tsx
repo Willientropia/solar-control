@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 import LoginPage from "@/pages/login";
 import LandingPage from "@/pages/landing";
@@ -182,14 +183,16 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

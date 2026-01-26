@@ -76,10 +76,17 @@ export default function RelatoriosPage() {
 
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `relatorio_${selectedPeriodo.replace("/", "_")}.csv`;
+    link.style.display = 'none';
     link.click();
+
+    // Clean up the object URL after a small delay to ensure download starts
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 100);
   };
 
   return (
