@@ -157,6 +157,24 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
     },
   });
 
+  const marcarGeradaMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/marcar-gerada`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
+      toast({ title: "Fatura marcada como gerada" });
+      onRefresh?.();
+    },
+  });
+
+  const desmarcarGeradaMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/faturas/${fatura.id}/desmarcar-gerada`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: 'all' });
+      toast({ title: "Status da fatura resetado" });
+      onRefresh?.();
+    },
+  });
+
   const generatePdfMutation = useMutation({
     mutationFn: async () => {
       setIsGenerating(true);
@@ -247,35 +265,44 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
   };
 
   const handleClienteStatusChange = (newStatus: string) => {
-    // Handle status changes for cliente fatura
+    const currentStatus = getClienteStatus();
+
+    // Se o status não mudou, não faz nada
+    if (newStatus === currentStatus) return;
+
+    // Handle status changes for cliente fatura - permite mudança livre
     switch (newStatus) {
       case "nao_gerada":
-        // Clear all timestamps
-        if (fatura.faturaClienteGeradaAt) desmarcarEnviadaMutation.mutate();
-        if (fatura.faturaClienteEnviadaAt) desmarcarEnviadaMutation.mutate();
-        if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
+        // Reset all timestamps
+        desmarcarGeradaMutation.mutate();
         break;
       case "gerada":
+        // Marca como gerada (se ainda não estiver) e remove enviada/recebida
         if (!fatura.faturaClienteGeradaAt) {
-          toast({ title: "Gere a fatura primeiro" });
+          marcarGeradaMutation.mutate();
         }
         if (fatura.faturaClienteEnviadaAt) desmarcarEnviadaMutation.mutate();
         if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
         break;
       case "enviada":
+        // Marca como gerada (se necessário) e enviada, remove recebida
         if (!fatura.faturaClienteGeradaAt) {
-          toast({ title: "Gere a fatura primeiro" });
-        } else if (!fatura.faturaClienteEnviadaAt) {
+          marcarGeradaMutation.mutate();
+        }
+        if (!fatura.faturaClienteEnviadaAt) {
           marcarEnviadaMutation.mutate();
         }
         if (fatura.faturaClienteRecebidaAt) desmarcarRecebidaMutation.mutate();
         break;
       case "recebida":
+        // Marca como gerada, enviada e recebida (se necessário)
         if (!fatura.faturaClienteGeradaAt) {
-          toast({ title: "Gere a fatura primeiro" });
-        } else if (!fatura.faturaClienteEnviadaAt) {
-          toast({ title: "Marque como enviada primeiro" });
-        } else if (!fatura.faturaClienteRecebidaAt) {
+          marcarGeradaMutation.mutate();
+        }
+        if (!fatura.faturaClienteEnviadaAt) {
+          marcarEnviadaMutation.mutate();
+        }
+        if (!fatura.faturaClienteRecebidaAt) {
           marcarRecebidaMutation.mutate();
         }
         break;
