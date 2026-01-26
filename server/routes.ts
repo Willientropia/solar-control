@@ -2891,7 +2891,81 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const getCellValue = (row: any, colNum: number | null): string => {
         if (!colNum) return '';
         const cell = row.getCell(colNum);
-        return String(cell.value || '').trim();
+        const value = cell.value;
+
+        // Se for null ou undefined
+        if (value === null || value === undefined) return '';
+
+        // Se for um objeto Date (Excel armazena datas assim)
+        if (value instanceof Date) {
+          const day = String(value.getDate()).padStart(2, '0');
+          const month = String(value.getMonth() + 1).padStart(2, '0');
+          const year = value.getFullYear();
+          return `${day}/${month}/${year}`;
+        }
+
+        // Se for um objeto com propriedade 'result' (fórmula do Excel)
+        if (typeof value === 'object' && value.result !== undefined) {
+          if (value.result instanceof Date) {
+            const day = String(value.result.getDate()).padStart(2, '0');
+            const month = String(value.result.getMonth() + 1).padStart(2, '0');
+            const year = value.result.getFullYear();
+            return `${day}/${month}/${year}`;
+          }
+          return String(value.result || '').trim();
+        }
+
+        // Se for um objeto richText (texto formatado do Excel)
+        if (typeof value === 'object' && value.richText) {
+          return value.richText.map((rt: any) => rt.text).join('').trim();
+        }
+
+        return String(value || '').trim();
+      };
+
+      // Helper para extrair valor de data especificamente
+      const getDateValue = (row: any, colNum: number | null): string => {
+        if (!colNum) return '';
+        const cell = row.getCell(colNum);
+        const value = cell.value;
+
+        // Se for null ou undefined
+        if (value === null || value === undefined) return '';
+
+        // Se for um objeto Date
+        if (value instanceof Date) {
+          const day = String(value.getDate()).padStart(2, '0');
+          const month = String(value.getMonth() + 1).padStart(2, '0');
+          const year = value.getFullYear();
+          return `${day}/${month}/${year}`;
+        }
+
+        // Se for um número (serial date do Excel)
+        if (typeof value === 'number') {
+          // Excel usa 1/1/1900 como base (com bug do ano bissexto de 1900)
+          const excelEpoch = new Date(1899, 11, 30);
+          const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${day}/${month}/${year}`;
+        }
+
+        // Se for string, verificar se já está no formato correto
+        const strValue = String(value || '').trim();
+
+        // Se já estiver no formato DD/MM/YYYY, retornar como está
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(strValue)) {
+          return strValue;
+        }
+
+        // Se estiver no formato YYYY-MM-DD (ISO)
+        if (/^\d{4}-\d{2}-\d{2}/.test(strValue)) {
+          const parts = strValue.split('T')[0].split('-');
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        return strValue;
       };
 
       // Helper para parsear números (aceita vírgula como decimal)
@@ -2967,7 +3041,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           clienteId: cliente.id,
           usinaId: cliente.usinaId,
           mesReferencia: mesReferencia,
-          dataVencimento: getCellValue(row, colIndex['dataVencimento']) || null,
+          dataVencimento: getDateValue(row, colIndex['dataVencimento']) || null,
           consumoScee: parseNumber(getCellValue(row, colIndex['consumoScee'])),
           consumoNaoCompensado: parseNumber(getCellValue(row, colIndex['consumoNaoCompensado'])),
           energiaInjetada: parseNumber(getCellValue(row, colIndex['energiaInjetada'])),
@@ -2985,8 +3059,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           dadosExtraidos: {
             importadoHistorico: true,
             dataImportacao: new Date().toISOString(),
-            leituraAnterior: getCellValue(row, colIndex['leituraAnterior']),
-            leituraAtual: getCellValue(row, colIndex['leituraAtual']),
+            leituraAnterior: getDateValue(row, colIndex['leituraAnterior']),
+            leituraAtual: getDateValue(row, colIndex['leituraAtual']),
             quantidadeDias: getCellValue(row, colIndex['quantidadeDias']),
             consumoKwh: getCellValue(row, colIndex['consumoKwh']),
             precoEnergiaInjetada: getCellValue(row, colIndex['precoEnergiaInjetada']),
