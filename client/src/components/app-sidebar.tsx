@@ -26,6 +26,7 @@ import {
   Settings,
   LogOut,
   Sun,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -34,12 +35,13 @@ interface SidebarProps {
 }
 
 const operadorItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Usinas", url: "/usinas", icon: Building2 },
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Faturas", url: "/faturas", icon: FileText },
   { title: "Geração Mensal", url: "/geracao", icon: Zap },
   { title: "Preços kWh", url: "/precos-kwh", icon: DollarSign },
+  { title: "Simulação", url: "/simulacao", icon: Sparkles },
 ];
 
 const adminItems = [

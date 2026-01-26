@@ -1048,6 +1048,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ==================== SIMULAÇÃO ====================
+  // Extract data from PDF for simulation - no database save, just returns extracted data
+  app.post("/api/simulacao/extract", requireAuth, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "PDF file is required" });
+      }
+
+      const precoKwh = parseFloat(req.body.precoKwh || "0.85");
+      const desconto = parseFloat(req.body.desconto || "25");
+
+      const extractedData = await extractPdfData(req.file.path, precoKwh, desconto);
+
+      // Delete the uploaded file after extraction (simulation doesn't save files)
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        // Ignore file deletion errors
+      }
+
+      if (!extractedData.success) {
+        return res.status(400).json({
+          message: "Erro ao extrair dados do PDF",
+          error: extractedData.error
+        });
+      }
+
+      // Add file info
+      extractedData.fileName = req.file.originalname;
+
+      res.json(extractedData);
+    } catch (error: any) {
+      console.error("Error extracting PDF data for simulation:", error);
+      res.status(500).json({ message: "Erro ao processar PDF", error: error.message });
+    }
+  });
+
   // Serve PDF files for preview (supports nested paths)
   // Uses requireAuthOrQuery to allow token via query string for browser direct access
   app.get("/api/faturas/pdf/*", requireAuthOrQuery, (req, res) => {
