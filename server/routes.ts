@@ -1910,6 +1910,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Mark invoice as generated (fatura com desconto)
+  app.patch("/api/faturas/:id/marcar-gerada", requireAuth, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteGeradaAt: new Date()
+      });
+
+      await logAction(req.userId, "marcar_gerada", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura marcada como gerada" });
+    } catch (error: any) {
+      console.error("Error marking invoice as generated:", error);
+      res.status(500).json({ message: "Failed to mark invoice as generated", error: error.message });
+    }
+  });
+
+  // Unmark invoice as generated
+  app.patch("/api/faturas/:id/desmarcar-gerada", requireAuth, async (req: any, res) => {
+    try {
+      const faturaId = req.params.id;
+      const fatura = await storage.getFatura(faturaId);
+
+      if (!fatura) {
+        return res.status(404).json({ message: "Fatura not found" });
+      }
+
+      await storage.updateFatura(faturaId, {
+        faturaClienteGeradaAt: null,
+        faturaClienteEnviadaAt: null,
+        faturaClienteRecebidaAt: null
+      });
+
+      await logAction(req.userId, "desmarcar_gerada", "fatura", faturaId);
+
+      res.json({ success: true, message: "Fatura desmarcada como gerada" });
+    } catch (error: any) {
+      console.error("Error unmarking invoice as generated:", error);
+      res.status(500).json({ message: "Failed to unmark invoice as generated", error: error.message });
+    }
+  });
+
   // Mark invoice as sent to client
   app.patch("/api/faturas/:id/marcar-enviada", requireAuth, async (req: any, res) => {
     try {

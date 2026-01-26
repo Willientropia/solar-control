@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
@@ -32,6 +32,37 @@ import type { PrecoKwh } from "@shared/schema";
 import { parseToNumber, normalizeMonth } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
+// Mapeamento de meses para ordenação
+const MONTH_ORDER: Record<string, number> = {
+  "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
+  "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12
+};
+
+/**
+ * Ordena os preços por mês/ano de forma decrescente (mais recente primeiro)
+ * Formato esperado: "MES/ANO" (ex: "JAN/2026", "DEZ/2025")
+ */
+function sortPrecosByDate(precos: PrecoKwh[]): PrecoKwh[] {
+  return [...precos].sort((a, b) => {
+    const [mesA, anoA] = a.mesReferencia.split("/");
+    const [mesB, anoB] = b.mesReferencia.split("/");
+
+    const yearA = parseInt(anoA) || 0;
+    const yearB = parseInt(anoB) || 0;
+
+    // Primeiro compara por ano (decrescente)
+    if (yearB !== yearA) {
+      return yearB - yearA;
+    }
+
+    // Se mesmo ano, compara por mês (decrescente)
+    const monthA = MONTH_ORDER[mesA.toUpperCase()] || 0;
+    const monthB = MONTH_ORDER[mesB.toUpperCase()] || 0;
+
+    return monthB - monthA;
+  });
+}
+
 const precoFormSchema = z.object({
   mesReferencia: z.string().min(1, "Mês de referência é obrigatório"),
   tusd: z.string().min(1, "TUSD é obrigatório"),
@@ -58,6 +89,9 @@ export default function PrecosKwhPage() {
   const { data: ultimoPreco } = useQuery<PrecoKwh | null>({
     queryKey: ["/api/precos-kwh/ultimo"],
   });
+
+  // Ordena os preços por data (mais recente primeiro)
+  const sortedPrecos = useMemo(() => sortPrecosByDate(precos), [precos]);
 
   const form = useForm<PrecoFormData>({
     resolver: zodResolver(precoFormSchema),
@@ -492,7 +526,7 @@ export default function PrecosKwhPage() {
         <CardContent>
           <DataTable
             columns={columns}
-            data={precos}
+            data={sortedPrecos}
             isLoading={isLoading}
             emptyMessage="Nenhum preço cadastrado"
             getRowKey={(preco) => preco.id}
