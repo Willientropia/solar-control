@@ -57,7 +57,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
-import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, parseToNumber, compareMonths } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface ClienteDetalhes extends Cliente {
@@ -79,17 +79,6 @@ export default function ClienteDetalhesPage() {
   // Relatório de economia
   const [mesInicial, setMesInicial] = useState<string>("");
   const [mesFinal, setMesFinal] = useState<string>("");
-
-  // Helper function to compare months in "JAN/2025" format
-  const compareMonths = (mesA: string, mesB: string): number => {
-    if (!mesA || !mesB) return 0;
-    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    const [mesTextA, anoA] = mesA.split('/');
-    const [mesTextB, anoB] = mesB.split('/');
-    const yearDiff = parseInt(anoA) - parseInt(anoB);
-    if (yearDiff !== 0) return yearDiff;
-    return meses.indexOf(mesTextA.toUpperCase()) - meses.indexOf(mesTextB.toUpperCase());
-  };
 
   // Validated handlers for month selection
   const handleMesInicialChange = (value: string) => {

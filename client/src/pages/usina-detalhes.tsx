@@ -62,7 +62,7 @@ import {
   Calculator,
 } from "lucide-react";
 import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
-import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, cn } from "@/lib/utils";
+import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, MONTHS_PT, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 import { FaturaFlowIndicators } from "@/components/fatura-flow-indicators";
 import { useAuth } from "@/hooks/use-auth";
@@ -184,8 +184,7 @@ export default function UsinaDetalhesPage() {
   const getPreviousMonthRef = (): string => {
     const now = new Date();
     now.setMonth(now.getMonth() - 1);
-    const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-    return `${months[now.getMonth()]}/${now.getFullYear()}`;
+    return `${MONTHS_PT[now.getMonth()]}/${now.getFullYear()}`;
   };
   const previousMonth = getPreviousMonthRef();
 

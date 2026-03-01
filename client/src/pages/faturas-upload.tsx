@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
-import { cn, parseToNumber, formatNumber, normalizeMonth } from "@/lib/utils";
+import { cn, parseToNumber, formatNumber, normalizeMonth, MONTHS_PT } from "@/lib/utils";
 
 interface ExtractedData {
   success: boolean;
@@ -302,11 +302,9 @@ export default function FaturasUploadPage() {
         try {
           // 1. Tentar buscar preço do mês específico
           const mesEncoded = encodeURIComponent(data.mesReferencia);
-          console.log("🔍 [UPLOAD] Buscando preço para o mês:", data.mesReferencia, "->", mesEncoded);
 
           const response = await apiRequest("GET", `/api/precos-kwh/mes/${mesEncoded}`);
           const precoResponse = await response.json();
-          console.log("📦 [UPLOAD] Resposta da API de preço (JSON parseado):", precoResponse);
 
           if (precoResponse.precoKwhCalculado) {
             // Preço encontrado para o mês específico
@@ -318,7 +316,6 @@ export default function FaturasUploadPage() {
               usandoFallback: false
             };
 
-            console.log("✅ [UPLOAD] Preço encontrado para", data.mesReferencia, ":", fetchedPrecoKwh);
             setPrecoKwh(fetchedPrecoKwh);
             setPrecoKwhInfo(precoInfo);
 
@@ -327,8 +324,6 @@ export default function FaturasUploadPage() {
               description: `Preço de R$ ${Number(fetchedPrecoKwh).toFixed(6)}/kWh encontrado para ${data.mesReferencia}`,
             });
           } else {
-            console.warn("⚠️ [UPLOAD] Preço não encontrado para", data.mesReferencia, ", buscando último preço disponível...");
-
             // 2. Buscar último preço disponível (fallback)
             try {
               const allPrecosResponse = await apiRequest("GET", "/api/precos-kwh");
@@ -340,8 +335,7 @@ export default function FaturasUploadPage() {
                   const [mesA, anoA] = a.mesReferencia.split("/");
                   const [mesB, anoB] = b.mesReferencia.split("/");
                   if (anoB !== anoA) return parseInt(anoB) - parseInt(anoA);
-                  const monthOrder = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-                  return monthOrder.indexOf(mesB) - monthOrder.indexOf(mesA);
+                  return MONTHS_PT.indexOf(mesB as any) - MONTHS_PT.indexOf(mesA as any);
                 })[0];
 
                 fetchedPrecoKwh = ultimoPreco.precoKwhCalculado;
@@ -352,7 +346,6 @@ export default function FaturasUploadPage() {
                   usandoFallback: true
                 };
 
-                console.log("⚠️ [UPLOAD] Usando preço de", ultimoPreco.mesReferencia, "como fallback:", fetchedPrecoKwh);
                 setPrecoKwh(fetchedPrecoKwh);
                 setPrecoKwhInfo(precoInfo);
 
@@ -362,7 +355,6 @@ export default function FaturasUploadPage() {
                   variant: "destructive",
                 });
               } else {
-                console.error("❌ [UPLOAD] Nenhum preço cadastrado no sistema!");
                 toast({
                   title: "Erro: Nenhum preço cadastrado",
                   description: "Cadastre pelo menos um preço kWh antes de fazer upload de faturas.",
@@ -370,14 +362,12 @@ export default function FaturasUploadPage() {
                 });
               }
             } catch (fallbackError) {
-              console.error("❌ [UPLOAD] Erro ao buscar preços disponíveis:", fallbackError);
+              console.error("Erro ao buscar preços disponíveis:", fallbackError);
             }
           }
         } catch (error) {
-          console.error("❌ [UPLOAD] Erro ao buscar preço:", error);
+          console.error("Erro ao buscar preço:", error);
         }
-      } else {
-        console.warn("⚠️ [UPLOAD] Mês de referência não detectado na fatura");
       }
 
       // Recalcular valores com o preço correto
@@ -387,22 +377,11 @@ export default function FaturasUploadPage() {
       const precoFioBNum = parseToNumber(initialFormData.precoFioB || "0");
       const desconto = parseFloat(matchedCliente?.desconto || selectedUsina?.descontoPadrao || "25");
 
-      console.log("💰 [UPLOAD - CÁLCULOS INICIAIS]");
-      console.log("  Cliente:", matchedCliente?.nome || "NÃO ENCONTRADO");
-      console.log("  isPagante:", matchedCliente?.isPagante);
-      console.log("  Consumo SCEE:", consumoScee);
-      console.log("  Preço kWh usado:", precoKwhNum, "(fetchedPrecoKwh:", fetchedPrecoKwh, ")");
-      console.log("  Valor Total da fatura:", valorTotal);
-      console.log("  Preço Fio B:", precoFioBNum);
-      console.log("  Desconto:", desconto, "%");
-
       // Calculate Fio B
       const fioBValor = consumoScee * precoFioBNum;
-      console.log("  → Fio B calculado:", fioBValor, "=", consumoScee, "×", precoFioBNum);
 
       // Calculate valorSemDesconto
       const valorSemDesconto = (consumoScee * precoKwhNum) + valorTotal - fioBValor;
-      console.log("  → Valor Sem Desconto:", valorSemDesconto, "= (", consumoScee, "×", precoKwhNum, ") +", valorTotal, "-", fioBValor);
 
       let valorComDesconto: number;
       let economia: number;
@@ -412,35 +391,20 @@ export default function FaturasUploadPage() {
         valorComDesconto = 0;
         economia = 0;
         lucro = -valorTotal;
-        console.log("  → Cliente NÃO PAGANTE: valorComDesconto=0, economia=0, lucro=-", valorTotal);
       } else {
         const discountMultiplier = 1 - (desconto / 100);
         valorComDesconto = ((consumoScee * precoKwhNum) * discountMultiplier) + valorTotal - fioBValor;
         economia = valorSemDesconto - valorComDesconto;
         lucro = valorComDesconto - valorTotal;
-        console.log("  → Cliente PAGANTE:");
-        console.log("    Multiplicador desconto:", discountMultiplier, "= 1 - (", desconto, "/ 100)");
-        console.log("    Valor Com Desconto:", valorComDesconto);
-        console.log("    Economia:", economia);
-        console.log("    Lucro:", lucro);
       }
 
       // Atualizar formData com valores recalculados
       initialFormData["precoKwhUsado"] = fetchedPrecoKwh;
-      console.log("💾 [UPLOAD] Preço kWh armazenado no formData:", initialFormData["precoKwhUsado"]);
       initialFormData["fioB"] = formatNumber(fioBValor);
       initialFormData["valorSemDesconto"] = formatNumber(valorSemDesconto);
       initialFormData["valorComDesconto"] = formatNumber(valorComDesconto);
       initialFormData["economia"] = formatNumber(economia);
       initialFormData["lucro"] = formatNumber(lucro);
-      console.log("✅ [UPLOAD] FormData final:", {
-        precoKwhUsado: initialFormData["precoKwhUsado"],
-        fioB: initialFormData["fioB"],
-        valorSemDesconto: initialFormData["valorSemDesconto"],
-        valorComDesconto: initialFormData["valorComDesconto"],
-        economia: initialFormData["economia"],
-        lucro: initialFormData["lucro"]
-      });
 
       // Add to pending faturas
       setPendingFaturas((prev) => {
@@ -671,24 +635,11 @@ export default function FaturasUploadPage() {
     const valorTotal = parseToNumber(currentFormData.valorTotal || "0");
     const precoFioB = parseToNumber(currentFormData.precoFioB || "0");
 
-    console.log("🔄 [RECALCULAR] ===================");
-    console.log("  Cliente:", selectedCliente.nome);
-    console.log("  isPagante:", selectedCliente.isPagante);
-    console.log("  Desconto do cliente:", selectedCliente.desconto, "%");
-    console.log("  Consumo SCEE:", consumoScee);
-    console.log("  Preço kWh do formData:", currentFormData.precoKwhUsado);
-    console.log("  Preço kWh parseado:", precoKwhUsado);
-    console.log("  Preço kWh do estado global:", precoKwh);
-    console.log("  Valor Total:", valorTotal);
-    console.log("  Preço Fio B:", precoFioB);
-
     // Calculate Fio B
     const fioBValor = consumoScee * precoFioB;
-    console.log("  → Fio B:", fioBValor, "=", consumoScee, "×", precoFioB);
 
     // Calculate valorSemDesconto
     const valorSemDesconto = (consumoScee * precoKwhUsado) + valorTotal - fioBValor;
-    console.log("  → Valor Sem Desconto:", valorSemDesconto, "= (", consumoScee, "×", precoKwhUsado, ") +", valorTotal, "-", fioBValor);
 
     let valorComDesconto: number;
     let economia: number;
@@ -703,7 +654,6 @@ export default function FaturasUploadPage() {
       valorComDesconto = 0;
       economia = 0;
       lucro = -valorTotal;
-      console.log(`  → Cliente ${selectedCliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
     } else {
       // Cliente pagante - cálculo normal com desconto
       const clientDiscount = parseFloat(selectedCliente.desconto || "0");
@@ -711,20 +661,7 @@ export default function FaturasUploadPage() {
       valorComDesconto = ((consumoScee * precoKwhUsado) * discountMultiplier) + valorTotal - fioBValor;
       economia = valorSemDesconto - valorComDesconto;
       lucro = valorComDesconto - valorTotal;
-      console.log(`  → Cliente ${selectedCliente.nome} PAGANTE - ${clientDiscount}% desconto`);
-      console.log("    Multiplicador desconto:", discountMultiplier);
-      console.log("    Valor Com Desconto:", valorComDesconto);
-      console.log("    Economia:", economia);
-      console.log("    Lucro:", lucro);
     }
-
-    console.log("✅ [RECALCULAR] Resultados finais:");
-    console.log("  Fio B:", fioBValor);
-    console.log("  Valor Sem Desconto:", valorSemDesconto);
-    console.log("  Valor Com Desconto:", valorComDesconto);
-    console.log("  Economia:", economia);
-    console.log("  Lucro:", lucro);
-    console.log("==================================");
 
     // Update current fatura with recalculated values
     updateCurrentFatura({
@@ -747,14 +684,7 @@ export default function FaturasUploadPage() {
   // Auto-recalculate values when client is selected
   useEffect(() => {
     if (selectedClienteId && selectedCliente && formData.consumoScee) {
-      console.log("🔄 [AUTO-RECALCULAR] Cliente foi selecionado, disparando recálculo automático...");
       handleRecalculate();
-    } else {
-      console.log("⏸️ [AUTO-RECALCULAR] Condições não atendidas:", {
-        selectedClienteId,
-        selectedCliente: !!selectedCliente,
-        consumoScee: formData.consumoScee
-      });
     }
   }, [selectedClienteId, selectedCliente]);
 

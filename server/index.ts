@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
-import { storage } from "./storage";
+
 
 const app = express();
 
@@ -66,15 +66,7 @@ app.use((req, res, next) => {
 
 import { setupCronJobs } from "./cron";
 
-// Trigger restart
 (async () => {
-  try {
-    const fixStats = await storage.fixMonthConsistency();
-    log(`Database maintenance: ${JSON.stringify(fixStats)}`);
-  } catch (err) {
-    console.error("Database maintenance failed:", err);
-  }
-
   await registerRoutes(httpServer, app);
 
   // Initialize Cron Jobs

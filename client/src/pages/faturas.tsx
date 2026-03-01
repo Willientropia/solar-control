@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest, addTokenToUrl } from "@/lib/queryClient";
 import type { Fatura, Cliente, Usina } from "@shared/schema";
-import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth, cn } from "@/lib/utils";
+import { formatCurrency, parseToNumber, formatNumber, getCurrentMonthRef, normalizeMonth, getRecentMonths, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface FaturaWithCliente extends Fatura {
@@ -104,31 +104,6 @@ const FIELD_CATEGORIES = [
     ]
   }
 ];
-
-function getRecentMonths(count = 12): string[] {
-  const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-  const result = [];
-  const now = new Date();
-
-  // Start from next month
-  let currentMonth = now.getMonth() + 1;
-  let currentYear = now.getFullYear();
-
-  if (currentMonth > 11) {
-    currentMonth = 0;
-    currentYear++;
-  }
-
-  for (let i = 0; i < count; i++) {
-    result.push(`${months[currentMonth]}/${currentYear}`);
-    currentMonth--;
-    if (currentMonth < 0) {
-      currentMonth = 11;
-      currentYear--;
-    }
-  }
-  return result;
-}
 
 export default function FaturasNewPage() {
   const { toast } = useToast();
@@ -253,12 +228,6 @@ export default function FaturasNewPage() {
     const valorTotal = parseToNumber(editFormData.valorTotal || "0");
     const precoFioB = parseToNumber(editFormData.precoFioB || "0");
 
-    console.log("=== RECÁLCULO ===");
-    console.log("Consumo SCEE:", consumoScee);
-    console.log("Preço kWh:", precoKwh);
-    console.log("Valor Total:", valorTotal);
-    console.log("Preço Fio B:", precoFioB);
-
     // Calculate Fio B
     const fioBValor = consumoScee * precoFioB;
 
@@ -275,7 +244,6 @@ export default function FaturasNewPage() {
       valorComDesconto = 0;
       economia = 0;
       lucro = -valorTotal;
-      console.log(`Cliente ${editingFatura.cliente.nome} é USO PRÓPRIO - sem receita, lucro = -${valorTotal.toFixed(2)}`);
     } else {
       // Cliente pagante - cálculo normal com desconto
       const clientDiscount = parseFloat(editingFatura.cliente.desconto || "0");
@@ -283,15 +251,7 @@ export default function FaturasNewPage() {
       valorComDesconto = ((consumoScee * precoKwh) * discountMultiplier) + valorTotal - fioBValor;
       economia = valorSemDesconto - valorComDesconto;
       lucro = valorComDesconto - valorTotal;
-      console.log(`Cliente ${editingFatura.cliente.nome} PAGANTE - ${clientDiscount}% desconto`);
     }
-
-    console.log("Fio B:", fioBValor);
-    console.log("Valor Sem Desconto:", valorSemDesconto);
-    console.log("Valor Com Desconto:", valorComDesconto);
-    console.log("Economia:", economia);
-    console.log("Lucro:", lucro);
-    console.log("================");
 
     // Update form with recalculated values (use toFixed for number inputs)
     setEditFormData(prev => ({

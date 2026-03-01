@@ -9,6 +9,21 @@ export * from "./models/auth";
 // Re-export organizations models
 export * from "./models/organizations";
 
+// ============ CONSTANTES DE DOMÍNIO ============
+
+/**
+ * Valores canônicos do campo `status` da tabela faturas.
+ * Use sempre essas constantes — nunca strings hardcoded.
+ */
+export const FATURA_STATUS = {
+  AGUARDANDO_UPLOAD: "aguardando_upload",
+  AGUARDANDO_PAGAMENTO: "aguardando_pagamento",
+  PAGAMENTO_PENDENTE: "pagamento_pendente_confirmacao",
+  PAGO: "pago",
+} as const;
+
+export type FaturaStatus = typeof FATURA_STATUS[keyof typeof FATURA_STATUS];
+
 // ============ USINAS (Solar Plants) ============
 export const usinas = pgTable("usinas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -78,9 +93,9 @@ export const faturas = pgTable("faturas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   clienteId: varchar("cliente_id").notNull().references(() => clientes.id, { onDelete: "cascade" }),
   usinaId: varchar("usina_id").references(() => usinas.id),
-  mesReferencia: text("mes_referencia").notNull(),
-  dataVencimento: text("data_vencimento"),
-  
+  mesReferencia: text("mes_referencia").notNull(), // Formato canônico: "JAN/2026" (PT-BR MAIÚSCULO)
+  dataVencimento: text("data_vencimento"), // Formato: "DD/MM/YYYY"
+
   // Dados extraídos da fatura original
   consumoScee: decimal("consumo_scee", { precision: 12, scale: 2 }),
   consumoNaoCompensado: decimal("consumo_nao_compensado", { precision: 12, scale: 2 }),
@@ -149,7 +164,7 @@ export type Fatura = typeof faturas.$inferSelect;
 export const geracaoMensal = pgTable("geracao_mensal", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   usinaId: varchar("usina_id").notNull().references(() => usinas.id, { onDelete: "cascade" }),
-  mesReferencia: text("mes_referencia").notNull(),
+  mesReferencia: text("mes_referencia").notNull(), // Formato canônico: "JAN/2026" (PT-BR MAIÚSCULO)
   kwhGerado: decimal("kwh_gerado", { precision: 12, scale: 2 }).notNull(),
   alertaBaixaGeracao: boolean("alerta_baixa_geracao").default(false),
   observacoes: text("observacoes"),

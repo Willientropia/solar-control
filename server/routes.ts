@@ -12,6 +12,7 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import * as AuthService from "./services/auth-service";
 import { requireAuth, requireRole, requireAdmin, requireAuthOrQuery } from "./middleware/auth";
+import { getCurrentMonthRef, normalizeMonthRef } from "./lib/month";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -1290,7 +1291,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
        
        const normalizedData = {
          ...extractedData,
-         mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
+         mesReferencia: normalizeMonthRef(extractedData.mesReferencia),
          consumoScee: normalizeDecimal(extractedData.consumoScee),
          consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
         valorSemDesconto: valorSemDescontoFinal.toFixed(2),
@@ -1421,8 +1422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let processedCount = 0;
 
       for (const cliente of clientes) {
-        const mesRef = new Date().toLocaleString("pt-BR", { month: "short", year: "numeric" });
-        const mesReferencia = mesRef.charAt(0).toUpperCase() + mesRef.slice(1);
+        const mesReferencia = getCurrentMonthRef();
         
         const consumoScee = Math.random() * 500 + 100;
         const consumoNaoCompensado = Math.random() * 50;
@@ -1476,7 +1476,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (numericFields.includes(key) && value !== null && value !== undefined) {
           normalizedData[key] = normalizeDecimal(value as string);
         } else if (key === "mesReferencia" && typeof value === "string") {
-          normalizedData[key] = normalizeMonthReference(value);
+          normalizedData[key] = normalizeMonthRef(value);
         } else {
           // Handle empty strings as null to prevent timestamp errors
           if (typeof value === "string" && value.trim() === "") {
@@ -2250,27 +2250,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   
-  // Helper function for current month
-  function getCurrentMonthRef(): string {
-    const now = new Date();
-    const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-    return `${months[now.getMonth()]}/${now.getFullYear()}`;
-  }
-
-  // Helper to normalize month reference
-  function normalizeMonthReference(monthRef: string): string {
-    if (!monthRef) return "";
-    const parts = monthRef.trim().split("/");
-    if (parts.length !== 2) return monthRef;
-
-    let [month, year] = parts;
-    month = month.toUpperCase();
-    if (year.length === 2) {
-      year = "20" + year;
-    }
-    return `${month}/${year}`;
-  }
-
   // ==================== GERAÇÃO MENSAL ====================
   app.get("/api/geracao", requireAuth, async (req, res) => {
     try {
@@ -2279,31 +2258,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error fetching geracoes:", error);
       res.status(500).json({ message: "Failed to fetch geracoes" });
-    }
-  });
-
-  // Temporary debug route to find duplicates
-  app.get("/api/debug/duplicates", async (req, res) => {
-    try {
-      const geracoes = await storage.getGeracoes();
-      const mapped = geracoes.map(g => ({ id: g.id, mesReferencia: g.mesReferencia, usinaId: g.usinaId }));
-      res.json(mapped);
-    } catch (error) {
-      res.status(500).json({ error: error });
-    }
-  });
-
-  // Fix inconsistent month references
-  app.post("/api/debug/fix-months", async (req, res) => {
-    try {
-      const stats = await storage.fixMonthConsistency();
-      res.json({ 
-        message: "Months normalized and duplicates removed", 
-        stats 
-      });
-    } catch (error: any) {
-      console.error("Error fixing months:", error);
-      res.status(500).json({ message: "Failed to fix months", error: error.message });
     }
   });
 
@@ -2327,7 +2281,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const body = req.body;
       if (body.mesReferencia) {
-        body.mesReferencia = normalizeMonthReference(body.mesReferencia);
+        body.mesReferencia = normalizeMonthRef(body.mesReferencia);
       }
       
       const data = insertGeracaoMensalSchema.parse({
@@ -2354,7 +2308,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const body = req.body;
       if (body.mesReferencia) {
-        body.mesReferencia = normalizeMonthReference(body.mesReferencia);
+        body.mesReferencia = normalizeMonthRef(body.mesReferencia);
       }
       
       const data = insertGeracaoMensalSchema.partial().parse(body);

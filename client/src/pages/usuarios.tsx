@@ -40,6 +40,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { fetchWithAuth, useAuthContext } from '@/contexts/AuthContext';
 import { UserPlus, Loader2, AlertCircle, Shield, User, UserCog, Pencil } from 'lucide-react';
+import { formatDateBR } from '@/lib/utils';
 
 interface UserData {
   id: string;
@@ -501,7 +502,7 @@ export default function UsuariosPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {new Date(member.createdAt).toLocaleDateString('pt-BR')}
+                      {formatDateBR(member.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       {member.role !== 'super_admin' && (

@@ -5,7 +5,7 @@ import { Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MonthPickerProps {
-  value?: string; // Formato: "Jan/2026" ou "JAN/2026"
+  value?: string; // Formato canônico: "JAN/2026"
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;

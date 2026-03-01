@@ -15,6 +15,7 @@ import { ClipboardList, User, FileText, Building2, Zap, Settings } from "lucide-
 import { useState } from "react";
 import type { AuditLog } from "@shared/schema";
 import type { User as AuthUser } from "@shared/models/auth";
+import { formatDateBR } from "@/lib/utils";
 
 interface AuditLogWithUser extends AuditLog {
   user?: AuthUser;
@@ -35,18 +36,6 @@ const acaoColors: Record<string, string> = {
   upload: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   processar: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
 };
-
-function formatDate(date: Date | string | null) {
-  if (!date) return "-";
-  const d = new Date(date);
-  return d.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function AuditoriaPage() {
   const [filterEntidade, setFilterEntidade] = useState<string>("all");
@@ -162,7 +151,7 @@ export default function AuditoriaPage() {
                     </div>
 
                     <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      {formatDate(log.createdAt)}
+                      {formatDateBR(log.createdAt)}
                     </span>
                   </div>
                 </CardContent>

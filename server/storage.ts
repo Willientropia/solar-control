@@ -20,6 +20,7 @@ import {
   type InsertAuditLog,
   type UserProfile,
   type InsertUserProfile,
+  FATURA_STATUS,
 } from "@shared/schema";
 import { users, type User } from "@shared/models/auth";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@shared/models/organizations";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { getCurrentMonthRef } from "./lib/month";
 
 export interface IStorage {
   // Usinas
@@ -196,16 +198,6 @@ export class DatabaseStorage implements IStorage {
 
     const result = await query;
 
-    console.log("🔍 DEBUG getFaturas - Total faturas do banco:", result.length);
-    console.log("🔍 DEBUG getFaturas - Filtros recebidos:", { status, usinaId, mesReferencia });
-
-    // Log primeiros 3 meses para ver formato
-    if (result.length > 0) {
-      console.log("🔍 DEBUG getFaturas - Primeiros 3 meses no banco:",
-        result.slice(0, 3).map(r => r.faturas.mesReferencia)
-      );
-    }
-
     const filtered = result
       .filter((row) => {
         const statusMatch = !status || row.faturas.status === status;
@@ -221,8 +213,6 @@ export class DatabaseStorage implements IStorage {
         ...row.faturas,
         cliente: row.clientes || undefined,
       }));
-
-    console.log("🔍 DEBUG getFaturas - Faturas após filtro:", filtered.length);
 
     return filtered;
   }
@@ -288,7 +278,10 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(geracaoMensal)
         .where(
-          and(eq(geracaoMensal.usinaId, usinaId), eq(geracaoMensal.mesReferencia, mesReferencia))
+          and(
+            eq(geracaoMensal.usinaId, usinaId),
+            sql`UPPER(${geracaoMensal.mesReferencia}) = UPPER(${mesReferencia})`
+          )
         );
     }
     return db.select().from(geracaoMensal).where(eq(geracaoMensal.usinaId, usinaId));
@@ -343,7 +336,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPrecoKwhByMes(mesReferencia: string): Promise<PrecoKwh | undefined> {
-    const [preco] = await db.select().from(precosKwh).where(eq(precosKwh.mesReferencia, mesReferencia));
+    const [preco] = await db
+      .select()
+      .from(precosKwh)
+      .where(sql`UPPER(${precosKwh.mesReferencia}) = UPPER(${mesReferencia})`);
     return preco;
   }
 
@@ -575,16 +571,11 @@ export class DatabaseStorage implements IStorage {
     const [faturasPendentesCount] = await db
       .select({ count: sql<number>`count(*)` })
       .from(faturas)
-      .where(eq(faturas.status, "pendente"));
+      .where(eq(faturas.status, FATURA_STATUS.AGUARDANDO_PAGAMENTO));
     const [faturasProcessadasCount] = await db
       .select({ count: sql<number>`count(*)` })
       .from(faturas)
-      .where(eq(faturas.status, "processada"));
-
-    // Get current month stats
-    const currentMonth = new Date().toLocaleString("pt-BR", { month: "short" });
-    const currentYear = new Date().getFullYear();
-    const mesReferencia = `${currentMonth.charAt(0).toUpperCase() + currentMonth.slice(1)}/${currentYear}`;
+      .where(eq(faturas.status, FATURA_STATUS.PAGO));
 
     const [lucroStats] = await db
       .select({
@@ -600,8 +591,6 @@ export class DatabaseStorage implements IStorage {
       })
       .from(geracaoMensal);
 
-    // Get faturas em atraso (past due date and still pending)
-    const today = new Date().toISOString().split('T')[0];
     const faturasEmAtrasoResult = await this.getFaturasEmAtraso();
 
     return {
@@ -618,110 +607,26 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getFaturasEmAtraso(): Promise<(Fatura & { cliente?: Cliente })[]> {
-    const allFaturas = await this.getFaturas("pendente");
+    const allFaturas = await this.getFaturas(FATURA_STATUS.AGUARDANDO_PAGAMENTO);
     const today = new Date();
-    
+
     return allFaturas.filter((fatura) => {
       if (!fatura.dataVencimento) return false;
-      
+
       // Parse date in DD/MM/YYYY format (Brazilian)
       const parts = fatura.dataVencimento.split('/');
       if (parts.length !== 3) return false;
-      
+
       const vencimento = new Date(
         parseInt(parts[2]),
         parseInt(parts[1]) - 1,
         parseInt(parts[0])
       );
-      
-      return vencimento < today && fatura.status === "pendente";
+
+      return vencimento < today;
     });
   }
 
-  async fixMonthConsistency() {
-    let updatedFaturas = 0;
-    let deletedFaturas = 0;
-    let updatedGeracoes = 0;
-    let deletedGeracoes = 0;
-
-    const normalizeMonthReference = (monthRef: string): string => {
-      if (!monthRef) return "";
-      const parts = monthRef.trim().split("/");
-      if (parts.length !== 2) return monthRef;
-      
-      let [month, year] = parts;
-      month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
-      if (year.length === 2) {
-        year = "20" + year;
-      }
-      return `${month}/${year}`;
-    };
-
-    // Fix Faturas
-    const allFaturas = await db.select().from(faturas);
-    for (const f of allFaturas) {
-      if (!f.mesReferencia) continue;
-      
-      const normalized = normalizeMonthReference(f.mesReferencia);
-      if (normalized !== f.mesReferencia) {
-        // Check if collision exists
-        const existing = await db.select()
-          .from(faturas)
-          .where(and(
-            eq(faturas.clienteId, f.clienteId),
-            eq(faturas.mesReferencia, normalized)
-          ));
-        
-        // Filter out self
-        const collision = existing.find(e => e.id !== f.id);
-
-        if (collision) {
-          // Duplicate exists, delete this one
-          await db.delete(faturas).where(eq(faturas.id, f.id));
-          deletedFaturas++;
-        } else {
-          // No collision, update format
-          await db.update(faturas)
-            .set({ mesReferencia: normalized })
-            .where(eq(faturas.id, f.id));
-          updatedFaturas++;
-        }
-      }
-    }
-
-    // Fix Geracoes
-    const allGeracoes = await db.select().from(geracaoMensal);
-    for (const g of allGeracoes) {
-      if (!g.mesReferencia) continue;
-      
-      const normalized = normalizeMonthReference(g.mesReferencia);
-      if (normalized !== g.mesReferencia) {
-        // Check if collision exists
-        const existing = await db.select()
-          .from(geracaoMensal)
-          .where(and(
-            eq(geracaoMensal.usinaId, g.usinaId),
-            eq(geracaoMensal.mesReferencia, normalized)
-          ));
-        
-        const collision = existing.find(e => e.id !== g.id);
-
-        if (collision) {
-          // Duplicate exists, delete this one
-          await db.delete(geracaoMensal).where(eq(geracaoMensal.id, g.id));
-          deletedGeracoes++;
-        } else {
-          // No collision, update format
-          await db.update(geracaoMensal)
-            .set({ mesReferencia: normalized })
-            .where(eq(geracaoMensal.id, g.id));
-          updatedGeracoes++;
-        }
-      }
-    }
-
-    return { updatedFaturas, deletedFaturas, updatedGeracoes, deletedGeracoes };
-  }
 }
 
 export const storage = new DatabaseStorage();

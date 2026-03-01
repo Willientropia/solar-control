@@ -29,14 +29,8 @@ import { z } from "zod";
 import { Plus, DollarSign, Edit, Trash2, Calculator } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PrecoKwh } from "@shared/schema";
-import { parseToNumber, normalizeMonth } from "@/lib/utils";
+import { parseToNumber, normalizeMonth, MONTH_ORDER } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
-
-// Mapeamento de meses para ordenação
-const MONTH_ORDER: Record<string, number> = {
-  "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
-  "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12
-};
 
 /**
  * Ordena os preços por mês/ano de forma decrescente (mais recente primeiro)
