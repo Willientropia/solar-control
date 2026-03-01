@@ -14,3 +14,6 @@ backups/
 *.sql
 *.sql.gz
 *.log
+
+# Exceção: migrations SQL são parte do código-fonte
+!migrations/*.sql
