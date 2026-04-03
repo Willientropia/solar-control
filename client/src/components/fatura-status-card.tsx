@@ -228,9 +228,10 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
 
       console.log('PDF gerado com sucesso:', data);
 
-      // Download the PDF (always opens in new tab)
+      // Download do PDF via rota autenticada — window.location.href funciona no iOS Safari
       if (data.pdfUrl) {
-        window.open(addTokenToUrl(data.pdfUrl), "_blank");
+        const filename = data.pdfUrl.split("/").pop();
+        window.location.href = addTokenToUrl(`/api/faturas/generated/${filename}`);
       }
 
       toast({ title: "PDF baixado com sucesso" });
@@ -380,7 +381,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
                   expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50"
                 )}
               >
-                <a href={addTokenToUrl(fatura.arquivoPdfUrl)} download target="_blank" rel="noopener noreferrer">
+                <a href={addTokenToUrl(`${fatura.arquivoPdfUrl}?download=1`)} rel="noopener noreferrer">
                   <Download className="h-4 w-4 mr-2" />
                   Baixar Original
                 </a>

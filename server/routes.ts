@@ -1100,6 +1100,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     if (fs.existsSync(filePath)) {
       res.setHeader("Content-Type", "application/pdf");
+      // ?download=1 força download em vez de abrir inline (necessário para iOS Safari)
+      if (req.query.download === "1") {
+        const filename = path.basename(filePath);
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      }
+      res.sendFile(filePath);
+    } else {
+      res.status(404).json({ message: "PDF not found" });
+    }
+  });
+
+  // Serve PDFs gerados (faturas com desconto) com Content-Disposition para forçar download no iOS
+  app.get("/api/faturas/generated/:filename", requireAuthOrQuery, (req, res) => {
+    const filename = path.basename(req.params.filename); // sanitize
+    const filePath = path.join(process.cwd(), "uploads", "faturas_geradas", filename);
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.sendFile(filePath);
     } else {
       res.status(404).json({ message: "PDF not found" });
