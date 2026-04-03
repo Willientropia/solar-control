@@ -1478,8 +1478,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } else if (key === "mesReferencia" && typeof value === "string") {
           normalizedData[key] = normalizeMonthReference(value);
         } else {
-          // Handle empty strings as null to prevent timestamp errors
-          if (typeof value === "string" && value.trim() === "") {
+          // Handle timestamp fields: convert ISO strings to Date, empty strings to null
+          const timestampFields = ["faturaClienteGeradaAt", "faturaClienteEnviadaAt", "faturaClienteRecebidaAt"];
+          if (timestampFields.includes(key)) {
+            if (typeof value === "string" && value.trim() !== "") {
+              normalizedData[key] = new Date(value);
+            } else {
+              normalizedData[key] = null;
+            }
+          } else if (typeof value === "string" && value.trim() === "") {
             normalizedData[key] = null;
           } else {
             normalizedData[key] = value;
@@ -1540,7 +1547,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userProfile = await storage.getUserProfile(req.userId);
       const userRole = userProfile?.role || "operador";
 
-      if (status === "pago" && userRole !== "admin") {
+      if (status === "pago" && userRole !== "admin" && userRole !== "super_admin") {
         return res.status(403).json({ message: "Apenas administradores podem marcar como Pago." });
       }
 

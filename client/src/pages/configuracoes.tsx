@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useMutation } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { authenticatedFetch } from "@/lib/queryClient";
+import { authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 
 interface ImportPreviewData {
@@ -136,7 +136,7 @@ export default function ConfiguracoesPage() {
   });
 
   const handleExport = () => {
-    window.location.href = "/api/admin/export/all";
+    window.location.href = addTokenToUrl("/api/admin/export/all");
     toast({
       title: "Download iniciado",
       description: "O backup completo do sistema está sendo baixado.",
