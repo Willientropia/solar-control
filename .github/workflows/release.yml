@@ -66,6 +66,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
           script: |
             set -e
 
@@ -86,7 +87,10 @@ jobs:
             docker pull ${IMAGE}:${TAG}
 
             # Sobe apenas o container da app (não toca no DB)
-            docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate app
+            # --no-deps evita recriar o DB; nohup garante que o SSH não trava esperando
+            nohup docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate app > /tmp/deploy.log 2>&1 &
+            sleep 5
+            cat /tmp/deploy.log
 
             # Remove imagens antigas
             docker image prune -f
