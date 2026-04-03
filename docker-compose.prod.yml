@@ -49,5 +49,7 @@ volumes:
   # Nunca rode "docker compose down -v" — isso apaga o banco e os uploads
   postgres_data:
     external: true
+    name: solar-control_postgres_data
   uploads_data:
     external: true
+    name: solar-control_uploads_data
