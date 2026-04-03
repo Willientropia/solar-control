@@ -68,6 +68,10 @@ jobs:
 
             cd /opt/solar-control
 
+            # Baixa o docker-compose.prod.yml mais recente
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.prod.yml \
+              -o docker-compose.prod.yml
+
             # Atualiza a variável de versão no .env
             TAG="${{ needs.build-and-push.outputs.version }}"
             sed -i "s|^APP_VERSION=.*|APP_VERSION=${TAG}|" .env || echo "APP_VERSION=${TAG}" >> .env
