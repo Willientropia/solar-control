@@ -137,6 +137,9 @@ export function AppSidebar({ userRole }: SidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
+        <div className="text-xs text-muted-foreground text-center mb-2">
+          v{import.meta.env.VITE_APP_VERSION}
+        </div>
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
             <AvatarImage src={user?.profileImageUrl || undefined} />
