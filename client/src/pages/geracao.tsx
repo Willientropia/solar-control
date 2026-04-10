@@ -118,7 +118,7 @@ export default function GeracaoPage() {
   const handleSubmit = (data: GeracaoFormData) => {
     const formattedData = {
       ...data,
-      mesReferencia: normalizeMonth(data.mesReferencia), // Normalizar para MAIÚSCULO
+      mesReferencia: normalizeMonth(data.mesReferencia),
       kwhGerado: parseToNumber(data.kwhGerado).toFixed(2),
     };
 

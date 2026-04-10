@@ -505,7 +505,7 @@ export default function FaturasUploadPage() {
             normalizedData[key] = priceFields.includes(key) ? num.toFixed(6) : num.toFixed(2);
           }
         } else if (key === "mesReferencia") {
-          // Normalizar mês para MAIÚSCULO (JAN/2026, DEZ/2025)
+          // Normalizar mês para Title Case (Jan/2026, Dez/2025)
           normalizedData[key] = normalizeMonth(value);
         } else {
           normalizedData[key] = value;

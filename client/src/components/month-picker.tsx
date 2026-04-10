@@ -5,33 +5,34 @@ import { Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MonthPickerProps {
-  value?: string; // Formato: "Jan/2026" ou "JAN/2026"
+  value?: string; // Formato: "Jan/2026"
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
 }
 
 const MONTHS = [
-  { value: "JAN", label: "Janeiro" },
-  { value: "FEV", label: "Fevereiro" },
-  { value: "MAR", label: "Março" },
-  { value: "ABR", label: "Abril" },
-  { value: "MAI", label: "Maio" },
-  { value: "JUN", label: "Junho" },
-  { value: "JUL", label: "Julho" },
-  { value: "AGO", label: "Agosto" },
-  { value: "SET", label: "Setembro" },
-  { value: "OUT", label: "Outubro" },
-  { value: "NOV", label: "Novembro" },
-  { value: "DEZ", label: "Dezembro" },
+  { value: "Jan", label: "Janeiro" },
+  { value: "Fev", label: "Fevereiro" },
+  { value: "Mar", label: "Março" },
+  { value: "Abr", label: "Abril" },
+  { value: "Mai", label: "Maio" },
+  { value: "Jun", label: "Junho" },
+  { value: "Jul", label: "Julho" },
+  { value: "Ago", label: "Agosto" },
+  { value: "Set", label: "Setembro" },
+  { value: "Out", label: "Outubro" },
+  { value: "Nov", label: "Novembro" },
+  { value: "Dez", label: "Dezembro" },
 ];
 
 export function MonthPicker({ value, onChange, placeholder = "Selecione o mês", disabled }: MonthPickerProps) {
   const [open, setOpen] = useState(false);
 
-  // Parse current value
+  // Parse current value (case-insensitive para compatibilidade com dados antigos)
   const currentYear = value ? parseInt(value.split("/")[1]) : new Date().getFullYear();
-  const currentMonth = value ? value.split("/")[0].toUpperCase() : "";
+  const rawMonth = value ? value.split("/")[0] : "";
+  const currentMonth = rawMonth ? rawMonth.charAt(0).toUpperCase() + rawMonth.slice(1).toLowerCase() : "";
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
 

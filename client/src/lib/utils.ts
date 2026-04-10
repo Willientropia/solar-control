@@ -65,15 +65,21 @@ export function parseToNumber(value: string | number): number {
 
 export function getCurrentMonthRef(): string {
   const now = new Date();
-  const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   return `${months[now.getMonth()]}/${now.getFullYear()}`;
 }
 
 /**
- * Normaliza o formato do mês para MAIÚSCULO (JAN/2026, DEZ/2025)
- * Garante consistência em todo o sistema
+ * Normaliza o formato do mês para Title Case (Jan/2026, Dez/2025)
+ * Garante consistência em todo o sistema.
  */
 export function normalizeMonth(month: string): string {
   if (!month) return "";
-  return month.toUpperCase();
+  const parts = month.trim().split("/");
+  if (parts.length !== 2) return month;
+  const [mes, ano] = parts;
+  if (mes.length < 1) return month;
+  const titleCase = mes.charAt(0).toUpperCase() + mes.slice(1).toLowerCase();
+  const fullYear = ano.length === 2 ? "20" + ano : ano;
+  return `${titleCase}/${fullYear}`;
 }

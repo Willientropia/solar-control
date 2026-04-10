@@ -233,11 +233,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFaturaByClienteAndMonth(clienteId: string, mesReferencia: string): Promise<Fatura | undefined> {
-    const [fatura] = await db
+    // Comparação case-insensitive para tolerar variações de formato (Mar/2026 vs MAR/2026)
+    const rows = await db
       .select()
       .from(faturas)
-      .where(and(eq(faturas.clienteId, clienteId), eq(faturas.mesReferencia, mesReferencia)));
-    return fatura;
+      .where(eq(faturas.clienteId, clienteId));
+    const target = mesReferencia.toUpperCase();
+    return rows.find((f) => (f.mesReferencia || "").toUpperCase() === target);
   }
 
   async getFaturasByCliente(clienteId: string): Promise<Fatura[]> {
@@ -343,8 +345,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPrecoKwhByMes(mesReferencia: string): Promise<PrecoKwh | undefined> {
-    const [preco] = await db.select().from(precosKwh).where(eq(precosKwh.mesReferencia, mesReferencia));
-    return preco;
+    // Comparação case-insensitive para tolerar variações de formato
+    const rows = await db.select().from(precosKwh);
+    const target = mesReferencia.toUpperCase();
+    return rows.find((p) => (p.mesReferencia || "").toUpperCase() === target);
   }
 
   async createPrecoKwh(data: InsertPrecoKwh): Promise<PrecoKwh> {

@@ -68,11 +68,22 @@ import { FaturaFlowIndicators } from "@/components/fatura-flow-indicators";
 import { useAuth } from "@/hooks/use-auth";
 
 function getAvailableMonths(faturas: Fatura[], geracoes: GeracaoMensal[]): string[] {
-  const months = new Set([
-    ...faturas.map((f) => f.mesReferencia),
-    ...geracoes.map((g) => g.mesReferencia)
-  ]);
-  return Array.from(months).sort((a, b) => {
+  // Deduplica case-insensitive, preservando o formato Title Case (Mar/2026)
+  const toTitleCase = (ref: string): string => {
+    const [mes, ano] = ref.split("/");
+    if (!mes || !ano) return ref;
+    return `${mes.charAt(0).toUpperCase()}${mes.slice(1).toLowerCase()}/${ano}`;
+  };
+  const monthMap = new Map<string, string>();
+  [...faturas.map((f) => f.mesReferencia), ...geracoes.map((g) => g.mesReferencia)]
+    .filter(Boolean)
+    .forEach((ref) => {
+      const key = ref.toUpperCase();
+      if (!monthMap.has(key)) {
+        monthMap.set(key, toTitleCase(ref));
+      }
+    });
+  return Array.from(monthMap.values()).sort((a, b) => {
     const [mesA, anoA] = a.split("/");
     const [mesB, anoB] = b.split("/");
     if (anoA !== anoB) return parseInt(anoB) - parseInt(anoA);

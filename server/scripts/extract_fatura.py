@@ -172,12 +172,23 @@ def extract_uc(text):
     return None
 
 
+def _to_title_case_month(mes_ref):
+    """Converte 'MAR/2026' ou 'mar/2026' para 'Mar/2026' (Title Case)."""
+    if not mes_ref or '/' not in mes_ref:
+        return mes_ref
+    mes, ano = mes_ref.split('/', 1)
+    if not mes:
+        return mes_ref
+    return f"{mes[0].upper()}{mes[1:].lower()}/{ano}"
+
+
 def extract_reference_month_and_due_date(text):
     """
     Dois formatos possíveis na mesma linha:
     - "MAR/2026 15/04/2026 R$***816,68"  (data antes do valor)
     - "MAR/2026 R$***42,56 16/04/2026"   (data depois do valor)
     Ambos têm mês no formato MMM/YYYY.
+    Retorna o mês em Title Case ("Mar/2026") para manter consistência com dados legados.
     """
     # Formato 1: MÊS/ANO  DATA  R$...
     match = re.search(
@@ -185,7 +196,7 @@ def extract_reference_month_and_due_date(text):
         text
     )
     if match:
-        return match.group(1), match.group(2)
+        return _to_title_case_month(match.group(1)), match.group(2)
 
     # Formato 2: MÊS/ANO  R$...  DATA
     match = re.search(
@@ -193,12 +204,12 @@ def extract_reference_month_and_due_date(text):
         text
     )
     if match:
-        return match.group(1), match.group(2)
+        return _to_title_case_month(match.group(1)), match.group(2)
 
     # Fallback antigo: após CFOP
     match = re.search(r'CFOP \d{4}:.*?\n(\w{3}/\d{4})\s+(\d{2}/\d{2}/\d{4})', text)
     if match:
-        return match.group(1), match.group(2)
+        return _to_title_case_month(match.group(1)), match.group(2)
 
     return None, None
 

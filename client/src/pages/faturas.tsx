@@ -221,7 +221,7 @@ export default function FaturasNewPage() {
     if (!editingFatura) return;
 
     const updates = {
-      mesReferencia: normalizeMonth(editFormData.mesReferencia), // Normalizar para MAIÚSCULO
+      mesReferencia: normalizeMonth(editFormData.mesReferencia),
       dataVencimento: editFormData.dataVencimento,
       consumoScee: editFormData.consumoScee,
       consumoNaoCompensado: editFormData.consumoNaoCompensado,

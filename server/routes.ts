@@ -1439,8 +1439,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       let processedCount = 0;
 
       for (const cliente of clientes) {
-        const mesRef = new Date().toLocaleString("pt-BR", { month: "short", year: "numeric" });
-        const mesReferencia = mesRef.charAt(0).toUpperCase() + mesRef.slice(1);
+        const mesReferencia = getCurrentMonthRef();
         
         const consumoScee = Math.random() * 500 + 100;
         const consumoNaoCompensado = Math.random() * 50;
@@ -2142,14 +2141,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const allFaturas = await storage.getFaturas();
       const allGeracoes = await storage.getGeracoes();
       
-      // Filter by selected months
-      const selectedMonths = meses && meses.length > 0 ? meses : [getCurrentMonthRef()];
-      
+      // Filter by selected months (case-insensitive para tolerar dados legados)
+      const selectedMonthsRaw = meses && meses.length > 0 ? meses : [getCurrentMonthRef()];
+      const selectedMonthsUpper = selectedMonthsRaw.map((m: string) => m.toUpperCase());
+      const monthMatches = (mesRef: string | null | undefined) =>
+        !!mesRef && selectedMonthsUpper.includes(mesRef.toUpperCase());
+
       const clientesData = [];
-      
+
       for (const cliente of usinaClientes) {
         const clienteFaturas = allFaturas.filter(
-          f => f.clienteId === cliente.id && selectedMonths.includes(f.mesReferencia)
+          f => f.clienteId === cliente.id && monthMatches(f.mesReferencia)
         );
         
         if (clienteFaturas.length > 0) {
@@ -2202,17 +2204,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Get generation data for selected months
       const usinaGeracoes = allGeracoes.filter(
-        g => g.usinaId === usinaId && selectedMonths.includes(g.mesReferencia)
+        g => g.usinaId === usinaId && monthMatches(g.mesReferencia)
       );
       
       const kwhGerado = usinaGeracoes.reduce((acc, g) => acc + parseBrazilianNumber(g.kwhGerado), 0);
       // Use producaoMensalPrevista from usina, multiply by number of months
       const kwhPrevistoMensal = parseBrazilianNumber(usina.producaoMensalPrevista);
-      const kwhPrevisto = kwhPrevistoMensal * selectedMonths.length || 1;
+      const kwhPrevisto = kwhPrevistoMensal * selectedMonthsRaw.length || 1;
 
-      const periodo = selectedMonths.length === 1
-        ? selectedMonths[0]
-        : `${selectedMonths[selectedMonths.length - 1]} a ${selectedMonths[0]}`;
+      const periodo = selectedMonthsRaw.length === 1
+        ? selectedMonthsRaw[0]
+        : `${selectedMonthsRaw[selectedMonthsRaw.length - 1]} a ${selectedMonthsRaw[0]}`;
 
       const reportData = {
         nomeUsina: usina.nome,
@@ -2278,22 +2280,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Helper function for current month
   function getCurrentMonthRef(): string {
     const now = new Date();
-    const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
     return `${months[now.getMonth()]}/${now.getFullYear()}`;
   }
 
-  // Helper to normalize month reference
+  // Helper to normalize month reference to Title Case (ex: "Mar/2026")
   function normalizeMonthReference(monthRef: string): string {
     if (!monthRef) return "";
     const parts = monthRef.trim().split("/");
     if (parts.length !== 2) return monthRef;
 
     let [month, year] = parts;
-    month = month.toUpperCase();
+    month = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
     if (year.length === 2) {
       year = "20" + year;
     }
     return `${month}/${year}`;
+  }
+
+  // Compara duas referências de mês ignorando case (para tolerar dados legados)
+  function isSameMonthRef(a: string | null | undefined, b: string | null | undefined): boolean {
+    if (!a || !b) return false;
+    return a.toUpperCase() === b.toUpperCase();
   }
 
   // ==================== GERAÇÃO MENSAL ====================
@@ -3047,11 +3055,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return isNaN(num) ? '0' : num.toFixed(6);
       };
 
-      // Helper para normalizar mês de referência
+      // Helper para normalizar mês de referência para Title Case (Mar/2026)
       const normalizeMonth = (value: string): string => {
         if (!value) return '';
-        // Converte para maiúsculo e padroniza formato
-        return value.toUpperCase().trim();
+        return normalizeMonthReference(value.trim());
       };
 
       // Iterar pelas linhas de dados (a partir da linha 2)
@@ -3087,10 +3094,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Normalizar mês de referência
         const mesReferencia = normalizeMonth(mesRef);
 
-        // Verificar se já existe fatura para esse cliente/mês
+        // Verificar se já existe fatura para esse cliente/mês (case-insensitive)
         const faturasExistentes = await storage.getFaturasByCliente(cliente.id);
         const faturaExistente = faturasExistentes.find(f =>
-          f.mesReferencia.toUpperCase() === mesReferencia
+          f.mesReferencia.toUpperCase() === mesReferencia.toUpperCase()
         );
 
         if (faturaExistente) {

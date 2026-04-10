@@ -183,7 +183,7 @@ export default function PrecosKwhPage() {
   const handleSubmit = (data: PrecoFormData) => {
     const formattedData = {
       ...data,
-      mesReferencia: normalizeMonth(data.mesReferencia), // Normalizar para MAIÚSCULO
+      mesReferencia: normalizeMonth(data.mesReferencia),
       tusd: parseToNumber(data.tusd).toFixed(6),
       te: parseToNumber(data.te).toFixed(6),
       icms: parseToNumber(data.icms).toFixed(2),
