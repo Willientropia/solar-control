@@ -29,7 +29,8 @@ import {
   type OrganizationMember,
 } from "@shared/models/organizations";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, or, sql } from "drizzle-orm";
+import { normalizeUC } from "@shared/uc-utils";
 
 export interface IStorage {
   // Usinas
@@ -160,11 +161,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClienteByUC(unidadeConsumidora: string): Promise<Cliente | undefined> {
-    const [cliente] = await db
+    // Aceita UC nova (formatada ou só dígitos) OU legada.
+    // Prioriza match pela UC nova normalizada (remove pontos/traços/zeros à esquerda).
+    const normalized = normalizeUC(unidadeConsumidora);
+
+    if (normalized) {
+      const [byNova] = await db
+        .select()
+        .from(clientes)
+        .where(eq(clientes.unidadeConsumidoraNova, normalized));
+      if (byNova) return byNova;
+    }
+
+    // Fallback: match exato na UC legada (formato antigo, sem pontos).
+    const [byLegada] = await db
       .select()
       .from(clientes)
       .where(eq(clientes.unidadeConsumidora, unidadeConsumidora));
-    return cliente;
+    return byLegada;
   }
 
   async createCliente(data: InsertCliente): Promise<Cliente> {

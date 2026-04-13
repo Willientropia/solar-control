@@ -58,6 +58,7 @@ import {
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina, Fatura } from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber } from "@/lib/utils";
+import { formatUCNova, normalizeUC } from "@shared/uc-utils";
 import { MonthPicker } from "@/components/month-picker";
 
 interface ClienteDetalhes extends Cliente {
@@ -191,7 +192,8 @@ export default function ClienteDetalhesPage() {
         cpfCnpj: cliente.cpfCnpj || "",
         enderecoSimplificado: cliente.enderecoSimplificado || "",
         enderecoCompleto: cliente.enderecoCompleto || "",
-        unidadeConsumidora: cliente.unidadeConsumidora,
+        unidadeConsumidora: cliente.unidadeConsumidora || "",
+        unidadeConsumidoraNova: formatUCNova(cliente.unidadeConsumidoraNova),
         usinaId: cliente.usinaId,
         desconto: formatNumber(cliente.desconto),
         isPagante: cliente.isPagante,
@@ -206,6 +208,8 @@ export default function ClienteDetalhesPage() {
   const handleSaveEdit = () => {
     const formattedData = {
       ...editFormData,
+      unidadeConsumidoraNova: normalizeUC(editFormData.unidadeConsumidoraNova) || "",
+      unidadeConsumidora: editFormData.unidadeConsumidora?.trim() || null,
       desconto: parseToNumber(editFormData.desconto).toFixed(2),
       valorContratadoKwh: editFormData.valorContratadoKwh ? parseToNumber(editFormData.valorContratadoKwh).toFixed(2) : null,
       porcentagemEnvioCredito: editFormData.porcentagemEnvioCredito ? parseToNumber(editFormData.porcentagemEnvioCredito).toFixed(2) : null,
@@ -248,7 +252,7 @@ export default function ClienteDetalhesPage() {
     <div className="p-6 space-y-6">
       <PageHeader
         title={cliente.nome}
-        description={`UC: ${cliente.unidadeConsumidora} • ${cliente.usina?.nome || "Usina não encontrada"}`}
+        description={`UC: ${formatUCNova(cliente.unidadeConsumidoraNova) || cliente.unidadeConsumidora || "—"} • ${cliente.usina?.nome || "Usina não encontrada"}`}
         actions={
           <div className="flex gap-2">
             <Button variant="outline" asChild>
@@ -574,11 +578,22 @@ export default function ClienteDetalhesPage() {
                   />
                 </div>
                 <div>
-                  <Label>Unidade Consumidora</Label>
+                  <Label>UC Nova (formato 2026+)</Label>
+                  <Input
+                    value={editFormData.unidadeConsumidoraNova || ""}
+                    onChange={(e) => updateEditFormField("unidadeConsumidoraNova", e.target.value)}
+                    placeholder="Ex: 3.480.146.012-52"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Obrigatória</p>
+                </div>
+                <div>
+                  <Label>UC Legada (opcional)</Label>
                   <Input
                     value={editFormData.unidadeConsumidora || ""}
                     onChange={(e) => updateEditFormField("unidadeConsumidora", e.target.value)}
+                    placeholder="Ex: 10023560892"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Formato antigo (histórico)</p>
                 </div>
                 <div>
                   <Label>Endereço Simplificado</Label>

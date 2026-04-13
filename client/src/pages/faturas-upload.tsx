@@ -284,10 +284,18 @@ export default function FaturasUploadPage() {
         initialFormData[key] = value !== null && value !== undefined ? String(value) : "";
       });
 
-      // Buscar cliente pela UC em TODOS os clientes (não apenas os filtrados)
-      const matchedCliente = clientes.find(
-        (c) => c.unidadeConsumidora === data.unidadeConsumidora
-      );
+      // Buscar cliente pela UC em TODOS os clientes (não apenas os filtrados).
+      // Normaliza (só dígitos, sem zeros à esquerda) pra casar UC nova formatada ("3.480.146.012-52"),
+      // UC nova crua ("348014601252") ou UC legada ("10023560892").
+      const normalizeUC = (uc?: string | null) =>
+        (uc || "").replace(/\D/g, "").replace(/^0+/, "");
+      const extractedUC = normalizeUC(data.unidadeConsumidora);
+      const matchedCliente = clientes.find((c) => {
+        const nova = normalizeUC(c.unidadeConsumidoraNova);
+        if (nova && extractedUC && nova === extractedUC) return true;
+        const legada = normalizeUC(c.unidadeConsumidora);
+        return !!legada && !!extractedUC && legada === extractedUC;
+      });
 
       // Se encontrou o cliente e não há usina selecionada, definir automaticamente
       if (matchedCliente && !selectedUsinaId) {

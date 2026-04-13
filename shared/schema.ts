@@ -44,7 +44,8 @@ export const clientes = pgTable("clientes", {
   endereco: text("endereco"), // Campo legado, mantido para compatibilidade
   enderecoSimplificado: text("endereco_simplificado"), // Ex: "SLMB" - usado em relatórios
   enderecoCompleto: text("endereco_completo"), // Endereço completo - usado em faturas
-  unidadeConsumidora: text("unidade_consumidora").notNull().unique(),
+  unidadeConsumidora: text("unidade_consumidora").unique(), // UC legada (formato antigo) - opcional, mantida para histórico
+  unidadeConsumidoraNova: text("unidade_consumidora_nova").unique(), // UC nova (formato 2026+) - normalizada (só dígitos, sem zeros à esquerda)
   usinaId: varchar("usina_id").notNull().references(() => usinas.id, { onDelete: "cascade" }),
   desconto: decimal("desconto", { precision: 5, scale: 2 }).notNull().default("15.00"),
   isPagante: boolean("is_pagante").notNull().default(true),
@@ -64,7 +65,10 @@ export const clientesRelations = relations(clientes, ({ one, many }) => ({
   faturas: many(faturas),
 }));
 
-export const insertClienteSchema = createInsertSchema(clientes).omit({
+export const insertClienteSchema = createInsertSchema(clientes, {
+  unidadeConsumidoraNova: z.string().min(1, "UC nova é obrigatória"),
+  unidadeConsumidora: z.string().optional().nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

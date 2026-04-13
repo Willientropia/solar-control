@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { FaturaFlowIndicators } from "./fatura-flow-indicators";
 import { formatCurrency, cn } from "@/lib/utils";
+import { formatUCNova } from "@shared/uc-utils";
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Fatura, Cliente } from "@shared/schema";
@@ -326,7 +327,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                UC: {cliente.unidadeConsumidora}
+                UC: {formatUCNova(cliente.unidadeConsumidoraNova) || cliente.unidadeConsumidora || "—"}
                 {cliente.numeroContrato && ` • Contrato: ${cliente.numeroContrato}`}
               </p>
             </div>

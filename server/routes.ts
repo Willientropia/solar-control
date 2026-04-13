@@ -704,10 +704,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const usina = await storage.createUsina(data);
       await logAction(req.userId, "criar", "usina", usina.id, { nome: usina.nome });
       
-      // Auto-create the usina's own UC as a non-paying client (UC matriz)
+      // Auto-create the usina's own UC as a non-paying client (UC matriz).
+      // Normaliza a UC da usina (só dígitos) para ocupar o campo obrigatório nova.
+      const ucMatrizNormalizada = String(usina.unidadeConsumidora).replace(/\D/g, "").replace(/^0+/, "") || usina.unidadeConsumidora;
       const clienteMatriz = await storage.createCliente({
         nome: `${usina.nome} - UC Matriz`,
         unidadeConsumidora: usina.unidadeConsumidora,
+        unidadeConsumidoraNova: ucMatrizNormalizada,
         usinaId: usina.id,
         desconto: usina.descontoPadrao,
         isPagante: false,
@@ -2863,6 +2866,102 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ==================== IMPORTAÇÃO DE UCs NOVAS (MIGRAÇÃO EQUATORIAL 2026) ====================
+  // Recebe planilha com colunas CONTAS (UC antiga) e CONTAS NOVA (UC nova) e atualiza
+  // unidade_consumidora_nova dos clientes existentes, fazendo match pela UC antiga.
+  app.post("/api/admin/import/ucs-novas", requireAuth, requireAdmin, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
+      }
+
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(req.file.path);
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "Arquivo não contém planilhas" });
+      }
+
+      // Mapeia cabeçalho (case-insensitive, ignora acentos/espaços extras)
+      const normalizeHeader = (s: string) =>
+        String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const headerRow = worksheet.getRow(1);
+      const headers: Record<string, number> = {};
+      headerRow.eachCell((cell: any, colNumber: number) => {
+        headers[normalizeHeader(cell.value)] = colNumber;
+      });
+
+      const colAntiga = headers['contas'] ?? headers['conta'] ?? headers['uc antiga'] ?? headers['uc'];
+      const colNova = headers['contas nova'] ?? headers['conta nova'] ?? headers['uc nova'] ?? headers['nova'];
+
+      if (!colAntiga || !colNova) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          message: "Planilha deve conter colunas 'CONTAS' (UC antiga) e 'CONTAS NOVA' (UC nova)"
+        });
+      }
+
+      // Normaliza UC: só dígitos, sem zeros à esquerda.
+      const normalize = (v: any): string | null => {
+        if (v === null || v === undefined) return null;
+        const digits = String(v).replace(/\D/g, '').replace(/^0+/, '');
+        return digits || null;
+      };
+
+      const clientes = await storage.getClientes();
+      const results = {
+        atualizados: 0,
+        semCliente: [] as string[],
+        jaAtualizados: 0,
+        erros: [] as string[],
+      };
+
+      const totalRows = worksheet.rowCount;
+      for (let rowNum = 2; rowNum <= totalRows; rowNum++) {
+        const row = worksheet.getRow(rowNum);
+        const ucAntiga = normalize(row.getCell(colAntiga).value);
+        const ucNova = normalize(row.getCell(colNova).value);
+
+        if (!ucAntiga || !ucNova) continue;
+
+        const cliente = clientes.find(c => normalize(c.unidadeConsumidora) === ucAntiga);
+        if (!cliente) {
+          results.semCliente.push(ucAntiga);
+          continue;
+        }
+
+        if (cliente.unidadeConsumidoraNova === ucNova) {
+          results.jaAtualizados++;
+          continue;
+        }
+
+        try {
+          await storage.updateCliente(cliente.id, { unidadeConsumidoraNova: ucNova });
+          results.atualizados++;
+        } catch (err: any) {
+          results.erros.push(`UC ${ucAntiga} → ${ucNova}: ${err.message}`);
+        }
+      }
+
+      fs.unlinkSync(req.file.path);
+
+      await logAction(req.userId, "import", "clientes", undefined, {
+        filename: req.file.originalname,
+        atualizados: results.atualizados,
+        semCliente: results.semCliente.length,
+      });
+
+      res.json({ message: "Importação de UCs novas concluída", result: results });
+    } catch (error: any) {
+      console.error("Error importing UCs novas:", error);
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(500).json({ message: "Erro ao importar UCs novas", error: error.message });
+    }
+  });
+
   // ==================== IMPORTAÇÃO DE HISTÓRICO DE FATURAS ====================
   // Import historical invoice data from CSV/Excel (admin only)
   app.post("/api/admin/import/historico-faturas", requireAuth, requireAdmin, excelUpload.single('file'), async (req: any, res) => {
@@ -3073,10 +3172,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!uc && !cpf) continue;
         if (!mesRef) continue;
 
-        // Encontrar cliente pela UC ou CPF
+        // Encontrar cliente pela UC (nova normalizada ou legada) ou CPF
         let cliente = null;
         if (uc) {
-          cliente = clientes.find(c => c.unidadeConsumidora === uc);
+          const ucNormalized = String(uc).replace(/\D/g, '').replace(/^0+/, '');
+          cliente = clientes.find(c => {
+            const nova = (c.unidadeConsumidoraNova || '').replace(/\D/g, '').replace(/^0+/, '');
+            if (nova && ucNormalized && nova === ucNormalized) return true;
+            return c.unidadeConsumidora === uc;
+          });
         }
         if (!cliente && cpf) {
           cliente = clientes.find(c => c.cpfCnpj === cpf);

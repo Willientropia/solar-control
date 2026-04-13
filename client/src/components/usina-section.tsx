@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FaturaStatusCard } from "./fatura-status-card";
 import { cn } from "@/lib/utils";
+import { formatUCNova } from "@shared/uc-utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import type { Usina, Cliente, Fatura } from "@shared/schema";
@@ -241,7 +242,7 @@ export function UsinaSection({ usina, faturas, clientes, onRefresh, onEditFatura
                       <div>
                         <p className="font-medium">{cliente.nome}</p>
                         <p className="text-sm text-muted-foreground">
-                          UC: {cliente.unidadeConsumidora}
+                          UC: {formatUCNova(cliente.unidadeConsumidoraNova) || cliente.unidadeConsumidora || "—"}
                         </p>
                       </div>
                       <Badge variant="secondary">Sem fatura</Badge>

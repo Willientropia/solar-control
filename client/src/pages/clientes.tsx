@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -37,10 +37,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Users, Edit, Trash2, Search } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Search, Upload } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { formatNumber, parseToNumber } from "@/lib/utils";
+import { formatUCNova, normalizeUC } from "@shared/uc-utils";
 
 const clienteFormSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
@@ -48,7 +49,8 @@ const clienteFormSchema = z.object({
   endereco: z.string().optional(), // Campo legado, mantido para compatibilidade
   enderecoSimplificado: z.string().optional(),
   enderecoCompleto: z.string().optional(),
-  unidadeConsumidora: z.string().min(1, "UC é obrigatória"),
+  unidadeConsumidora: z.string().optional(), // UC legada (formato antigo) - opcional
+  unidadeConsumidoraNova: z.string().min(1, "UC Nova é obrigatória"),
   usinaId: z.string().min(1, "Usina é obrigatória"),
   desconto: z.string().default("15"),
   isPagante: z.boolean().default(true),
@@ -72,6 +74,7 @@ export default function ClientesPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("all");
+  const ucImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: clientes = [], isLoading } = useQuery<ClienteWithUsina[]>({
     queryKey: ["/api/clientes"],
@@ -90,6 +93,7 @@ export default function ClientesPage() {
       enderecoSimplificado: "",
       enderecoCompleto: "",
       unidadeConsumidora: "",
+      unidadeConsumidoraNova: "",
       usinaId: "",
       desconto: "15",
       isPagante: true,
@@ -138,6 +142,40 @@ export default function ClientesPage() {
     },
   });
 
+  const importUCsMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/import/ucs-novas", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Erro ao importar" }));
+        throw new Error(err.message || "Erro ao importar");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clientes"] });
+      const r = data.result || {};
+      toast({
+        title: "Importação concluída",
+        description: `${r.atualizados || 0} atualizados, ${r.jaAtualizados || 0} já existiam, ${r.semCliente?.length || 0} sem cliente.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Erro ao importar UCs", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleUCImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) importUCsMutation.mutate(file);
+    e.target.value = "";
+  };
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/clientes/${id}`),
     onSuccess: () => {
@@ -155,9 +193,12 @@ export default function ClientesPage() {
   const handleSubmit = (data: ClienteFormData) => {
     const formattedData = {
       ...data,
+      // UC nova é sempre armazenada normalizada (só dígitos, sem zeros à esquerda).
+      unidadeConsumidoraNova: normalizeUC(data.unidadeConsumidoraNova) || "",
+      unidadeConsumidora: data.unidadeConsumidora?.trim() || undefined,
       desconto: parseToNumber(data.desconto).toFixed(2),
-      valorContratadoKwh: data.valorContratadoKwh ? parseToNumber(data.valorContratadoKwh).toFixed(2) : null,
-      porcentagemEnvioCredito: data.porcentagemEnvioCredito ? parseToNumber(data.porcentagemEnvioCredito).toFixed(2) : null,
+      valorContratadoKwh: data.valorContratadoKwh ? parseToNumber(data.valorContratadoKwh).toFixed(2) : undefined,
+      porcentagemEnvioCredito: data.porcentagemEnvioCredito ? parseToNumber(data.porcentagemEnvioCredito).toFixed(2) : undefined,
     };
 
     if (editingCliente) {
@@ -175,7 +216,8 @@ export default function ClientesPage() {
       endereco: cliente.endereco || "",
       enderecoSimplificado: cliente.enderecoSimplificado || "",
       enderecoCompleto: cliente.enderecoCompleto || "",
-      unidadeConsumidora: cliente.unidadeConsumidora,
+      unidadeConsumidora: cliente.unidadeConsumidora || "",
+      unidadeConsumidoraNova: formatUCNova(cliente.unidadeConsumidoraNova),
       usinaId: cliente.usinaId,
       desconto: formatNumber(cliente.desconto),
       isPagante: cliente.isPagante,
@@ -217,7 +259,9 @@ export default function ClientesPage() {
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
         cliente.nome.toLowerCase().includes(searchLower) ||
-        cliente.unidadeConsumidora.toLowerCase().includes(searchLower) ||
+        (cliente.unidadeConsumidora?.toLowerCase().includes(searchLower) ?? false) ||
+        (cliente.unidadeConsumidoraNova?.toLowerCase().includes(searchLower) ?? false) ||
+        formatUCNova(cliente.unidadeConsumidoraNova).toLowerCase().includes(searchLower) ||
         (cliente.numeroContrato && cliente.numeroContrato.toLowerCase().includes(searchLower));
 
       // Filter by usina
@@ -251,7 +295,7 @@ export default function ClientesPage() {
             <div>
               <p className="font-medium">{cliente.nome}</p>
               <p className="text-sm text-muted-foreground">
-                UC: {cliente.unidadeConsumidora}
+                UC: {formatUCNova(cliente.unidadeConsumidoraNova) || cliente.unidadeConsumidora || "—"}
               </p>
             </div>
           </div>
@@ -341,12 +385,30 @@ export default function ClientesPage() {
               handleCloseDialog();
             }
           }}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-new-cliente">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Cliente
+            <div className="flex gap-2">
+              <input
+                ref={ucImportInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleUCImportFile}
+              />
+              <Button
+                variant="outline"
+                onClick={() => ucImportInputRef.current?.click()}
+                disabled={importUCsMutation.isPending}
+                data-testid="button-import-ucs"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {importUCsMutation.isPending ? "Importando..." : "Importar UCs Novas"}
               </Button>
-            </DialogTrigger>
+              <DialogTrigger asChild>
+                <Button data-testid="button-new-cliente">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Cliente
+                </Button>
+              </DialogTrigger>
+            </div>
             <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0">
               <DialogHeader className="p-6 pb-2">
                 <DialogTitle>
@@ -396,17 +458,40 @@ export default function ClientesPage() {
                       />
                       <FormField
                         control={form.control}
+                        name="unidadeConsumidoraNova"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>UC Nova (formato 2026+)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ex: 3.480.146.012-52"
+                                {...field}
+                                data-testid="input-cliente-uc-nova"
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Obrigatória. Pode digitar com ou sem pontos/hífen.
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
                         name="unidadeConsumidora"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Unidade Consumidora (UC)</FormLabel>
+                            <FormLabel>UC Legada (opcional)</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="Ex: 1234567890"
+                                placeholder="Ex: 10023560892"
                                 {...field}
                                 data-testid="input-cliente-uc"
                               />
                             </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Formato antigo. Mantida para histórico.
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}

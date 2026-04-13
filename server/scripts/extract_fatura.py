@@ -151,24 +151,40 @@ def extract_address(text):
     return None
 
 
+def _normalize_uc(uc):
+    """Remove pontos, traços, espaços e zeros à esquerda. Retorna None se vazio."""
+    if not uc:
+        return None
+    digits = re.sub(r'\D', '', uc).lstrip('0')
+    return digits or None
+
+
 def extract_uc(text):
     """
-    A UC aparece de duas formas:
-    - Novo layout: "RAMAL: 0% 500031319" (mesmo linha)
-    - Antigo layout: "Consulte pela Chave de Acesso em:\n10038900210"
+    A UC aparece de três formas conforme o layout:
+    - Layout 2026+ (formatado): "RAMAL: 0%\n3.480.146.012-52"
+    - Layout intermediário:     "RAMAL: 0% 500031319"
+    - Layout antigo:            "Consulte pela Chave de Acesso em:\n10038900210"
+
+    Retorna UC normalizada (apenas dígitos, sem zeros à esquerda).
     """
-    # Novo: número na mesma linha que "RAMAL: 0%"
-    match = re.search(r'RAMAL:\s*0%\s+(\d{6,12})\b', text)
+    # Formato novo com pontos/hífen: X.XXX.XXX.XXX-XX (mesma linha ou linha seguinte do RAMAL)
+    match = re.search(r'RAMAL:\s*0%\s*\n?\s*(\d\.\d{3}\.\d{3}\.\d{3}-\d{2})', text)
     if match:
-        return match.group(1)
-    # Novo alternativo: número na linha seguinte
-    match = re.search(r'RAMAL:\s*0%\s*\n\s*(\d{6,12})\b', text)
+        return _normalize_uc(match.group(1))
+
+    # Intermediário: número simples após "RAMAL: 0%"
+    match = re.search(r'RAMAL:\s*0%\s+(\d{6,15})\b', text)
     if match:
-        return match.group(1)
+        return _normalize_uc(match.group(1))
+    match = re.search(r'RAMAL:\s*0%\s*\n\s*(\d{6,15})\b', text)
+    if match:
+        return _normalize_uc(match.group(1))
+
     # Antigo: número na linha após "Consulte pela Chave de Acesso em:"
-    match = re.search(r'Consulte pela Chave de Acesso em:\s*\n\s*(\d{6,12})\b', text)
+    match = re.search(r'Consulte pela Chave de Acesso em:\s*\n\s*(\d{6,15})\b', text)
     if match:
-        return match.group(1)
+        return _normalize_uc(match.group(1))
     return None
 
 
