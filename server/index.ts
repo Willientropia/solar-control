@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 
 const app = express();
@@ -68,6 +69,15 @@ import { setupCronJobs } from "./cron";
 
 // Trigger restart
 (async () => {
+  try {
+    const migrationSql = fs.readFileSync(path.join(process.cwd(), "scripts", "add-uc-nova.sql"), "utf-8");
+    const { pool } = await import("./db");
+    await pool.query(migrationSql);
+    log("Migração SQL manual (add-uc-nova) verificada e aplicada.");
+  } catch (err) {
+    console.error("Failed to apply manual SQL migration:", err);
+  }
+
   try {
     const fixStats = await storage.fixMonthConsistency();
     log(`Database maintenance: ${JSON.stringify(fixStats)}`);

@@ -395,7 +395,7 @@ export function FaturaStatusCard({ fatura, cliente, onRefresh, onEdit }: FaturaS
                 variant="outline"
                 size="sm"
                 onClick={() => onEdit?.({ ...fatura, cliente })}
-                disabled={expirationInfo && expirationInfo.daysLeft <= 0}
+                disabled={!!(expirationInfo && expirationInfo.daysLeft <= 0)}
                 className={cn(
                   expirationInfo && expirationInfo.daysLeft <= 0 && "opacity-50"
                 )}

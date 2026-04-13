@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { ExcelService } from "./services/excel-service";
+import ExcelJS from "exceljs";
 import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
@@ -2875,7 +2876,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
       }
 
-      const ExcelJS = require('exceljs');
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(req.file.path);
 
@@ -2970,7 +2970,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Nenhum arquivo foi enviado" });
       }
 
-      const ExcelJS = require('exceljs');
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(req.file.path);
 
