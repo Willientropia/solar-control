@@ -38,7 +38,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Users, Edit, Trash2, Search, Upload } from "lucide-react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, authenticatedFetch } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { formatNumber, parseToNumber } from "@/lib/utils";
 import { formatUCNova, normalizeUC } from "@shared/uc-utils";
@@ -146,10 +146,9 @@ export default function ClientesPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/admin/import/ucs-novas", {
+      const res = await authenticatedFetch("/api/admin/import/ucs-novas", {
         method: "POST",
         body: formData,
-        credentials: "include",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: "Erro ao importar" }));
