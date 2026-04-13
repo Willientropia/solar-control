@@ -33,11 +33,16 @@ def extract_text_from_pdf(pdf_path):
                     text += page_text + "\n"
                 elif HAS_OCR:
                     try:
-                        image = page.to_image(resolution=300).original
+                        # 200 DPI é suficiente para OCR e muito mais rápido que 300
+                        image = page.to_image(resolution=200).original
                         ocr_text = pytesseract.image_to_string(image, lang='por')
                         text += ocr_text + "\n"
                     except Exception:
                         pass  # página sem texto e sem OCR disponível — ignora
+                # Se já temos dados suficientes da primeira página, não precisa
+                # gastar tempo com OCR em páginas adicionais
+                if text and 'CONSUMO' in text.upper():
+                    break
     except Exception as e:
         return None, str(e)
     return text, None
