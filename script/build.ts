@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import path from "path";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -27,6 +28,7 @@ const allowlist = [
   "stripe",
   "uuid",
   "ws",
+  "exceljs",
   "xlsx",
   "zod",
   "zod-validation-error",
@@ -54,6 +56,9 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+    },
+    alias: {
+      "@shared": path.resolve("shared"),
     },
     minify: true,
     external: externals,
