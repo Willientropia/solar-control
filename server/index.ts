@@ -3,7 +3,6 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
-import fs from "fs";
 import { storage } from "./storage";
 
 const app = express();
@@ -70,12 +69,31 @@ import { setupCronJobs } from "./cron";
 // Trigger restart
 (async () => {
   try {
-    const migrationSql = fs.readFileSync(path.join(process.cwd(), "scripts", "add-uc-nova.sql"), "utf-8");
     const { pool } = await import("./db");
-    await pool.query(migrationSql);
-    log("Migração SQL manual (add-uc-nova) verificada e aplicada.");
+    // Migração idempotente: adiciona coluna UC nova e afrouxa constraint da legada
+    await pool.query(`
+      ALTER TABLE clientes ADD COLUMN IF NOT EXISTS unidade_consumidora_nova TEXT;
+    `);
+    await pool.query(`
+      ALTER TABLE clientes ALTER COLUMN unidade_consumidora DROP NOT NULL;
+    `);
+    // Unique constraint (ignora se já existir)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'clientes_unidade_consumidora_nova_unique'
+        ) THEN
+          ALTER TABLE clientes
+            ADD CONSTRAINT clientes_unidade_consumidora_nova_unique
+            UNIQUE (unidade_consumidora_nova);
+        END IF;
+      END $$;
+    `);
+    log("Migração UC nova verificada e aplicada.");
   } catch (err) {
-    console.error("Failed to apply manual SQL migration:", err);
+    console.error("Failed to apply UC nova migration:", err);
   }
 
   try {

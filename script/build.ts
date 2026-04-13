@@ -1,6 +1,7 @@
-import { build as esbuild } from "esbuild";
+import { build as esbuild, type Plugin } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
 
 // server deps to bundle to reduce openat(2) syscalls
@@ -34,6 +35,34 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+/** Plugin that resolves @shared/* imports to the shared/ directory */
+function sharedAliasPlugin(): Plugin {
+  return {
+    name: "shared-alias",
+    setup(build) {
+      build.onResolve({ filter: /^@shared(\/|$)/ }, (args) => {
+        const relativePath = args.path.replace(/^@shared\/?/, "");
+        const base = path.resolve("shared", relativePath);
+
+        // Try: shared/<path>.ts
+        if (existsSync(base + ".ts")) {
+          return { path: base + ".ts" };
+        }
+        // Try: shared/<path>/index.ts
+        if (existsSync(path.join(base, "index.ts"))) {
+          return { path: path.join(base, "index.ts") };
+        }
+        // Try: shared/<path>.js
+        if (existsSync(base + ".js")) {
+          return { path: base + ".js" };
+        }
+        // Fallback: return as-is and let esbuild handle the error
+        return { path: base };
+      });
+    },
+  };
+}
+
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
@@ -57,9 +86,7 @@ async function buildAll() {
     define: {
       "process.env.NODE_ENV": '"production"',
     },
-    alias: {
-      "@shared": path.resolve("shared"),
-    },
+    plugins: [sharedAliasPlugin()],
     minify: true,
     external: externals,
     logLevel: "info",
