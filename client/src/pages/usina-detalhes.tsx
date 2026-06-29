@@ -33,6 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -60,8 +62,18 @@ import {
   FileDown,
   Info,
   Calculator,
+  Settings,
+  Trash2,
 } from "lucide-react";
-import type { Usina, Cliente, Fatura, GeracaoMensal } from "@shared/schema";
+import type {
+  Usina,
+  Cliente,
+  Fatura,
+  GeracaoMensal,
+  RelatorioColunas,
+  RelatorioResumoBoxes,
+  ItemExtra,
+} from "@shared/schema";
 import { formatCurrency, formatNumber, parseToNumber, getCurrentMonthRef, cn } from "@/lib/utils";
 import { MonthPicker } from "@/components/month-picker";
 import { FaturaFlowIndicators } from "@/components/fatura-flow-indicators";
@@ -282,9 +294,93 @@ export default function UsinaDetalhesPage() {
     },
   });
   
+  // ==================== CONFIGURAÇÕES DE RELATÓRIO ====================
+  const DEFAULT_COLUNAS: RelatorioColunas = {
+    uc: true,
+    endereco: true,
+    porcentagemEnvio: true,
+    consumo: true,
+    valorComDesconto: true,
+    pagoEquatorial: true,
+    lucro: true,
+    saldoKwh: true,
+  };
+  const DEFAULT_RESUMO: RelatorioResumoBoxes = {
+    receita: true,
+    custoEquatorial: true,
+    lucro: true,
+  };
+
+  const [configColunas, setConfigColunas] = useState<RelatorioColunas>(DEFAULT_COLUNAS);
+  const [configResumo, setConfigResumo] = useState<RelatorioResumoBoxes>(DEFAULT_RESUMO);
+  const [itensExtras, setItensExtras] = useState<ItemExtra[]>([]);
+  const [configFaturasMonth, setConfigFaturasMonth] = useState<string>(currentMonth);
+
+  const { data: relatorioConfig } = useQuery<{
+    colunas: RelatorioColunas;
+    resumoBoxes: RelatorioResumoBoxes;
+    itensExtras: ItemExtra[];
+  }>({
+    queryKey: [`/api/usinas/${params.id}/relatorio-config`],
+    enabled: !!params.id,
+  });
+
+  useEffect(() => {
+    if (relatorioConfig) {
+      setConfigColunas({ ...DEFAULT_COLUNAS, ...relatorioConfig.colunas });
+      setConfigResumo({ ...DEFAULT_RESUMO, ...relatorioConfig.resumoBoxes });
+      setItensExtras(relatorioConfig.itensExtras ?? []);
+    }
+  }, [relatorioConfig]);
+
+  const saveConfigMutation = useMutation({
+    mutationFn: async () => {
+      const body = {
+        colunas: configColunas,
+        resumoBoxes: configResumo,
+        itensExtras,
+      };
+      const response = await apiRequest("PUT", `/api/usinas/${params.id}/relatorio-config`, body);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/usinas/${params.id}/relatorio-config`] });
+      toast({ title: "Configurações salvas!", description: "O relatório usará estas configurações." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const toggleFaturaRelatorioMutation = useMutation({
+    mutationFn: async ({ id, incluir }: { id: string; incluir: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/faturas/${id}`, { incluirRelatorio: incluir });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/faturas"], refetchType: "all" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao atualizar fatura", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const addItemExtra = () => {
+    setItensExtras((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), label: "", tipo: "fixo", valor: 0, sinal: "despesa" },
+    ]);
+  };
+  const updateItemExtra = (id: string, patch: Partial<ItemExtra>) => {
+    setItensExtras((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  };
+  const removeItemExtra = (id: string) => {
+    setItensExtras((prev) => prev.filter((it) => it.id !== id));
+  };
+
   const toggleReportMonth = (month: string) => {
-    setSelectedReportMonths((prev) => 
-      prev.includes(month) 
+    setSelectedReportMonths((prev) =>
+      prev.includes(month)
         ? prev.filter((m) => m !== month)
         : [...prev, month]
     );
@@ -521,6 +617,32 @@ export default function UsinaDetalhesPage() {
   const economiaTotal = faturas.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0);
   const kwhDistribuido = faturas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
 
+  // ===== Relatório (Resumo Financeiro) — respeita a config da usina =====
+  // Apenas faturas marcadas para inclusão entram nas contas do relatório.
+  const faturasReport = faturas.filter((f) => f.incluirRelatorio !== false);
+  const lucroBaseReport = faturasReport.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0);
+  const economiaReport = faturasReport.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0);
+  const receitaReport = faturasReport.reduce((acc, f) => acc + parseFloat(f.valorComDesconto || "0"), 0);
+  const kwhDistribuidoReport = faturasReport.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
+
+  // Geração total dos meses presentes nas faturas exibidas (para itens "% da geração")
+  const mesesExibidos = new Set(faturasReport.map((f) => f.mesReferencia.toUpperCase()));
+  const kwhGeradoReport = geracoes
+    .filter((g) => mesesExibidos.has(g.mesReferencia.toUpperCase()))
+    .reduce((acc, g) => acc + parseFloat(g.kwhGerado || "0"), 0);
+
+  const calcItemExtraValor = (item: ItemExtra): number => {
+    if (item.tipo === "fixo") return item.valor;
+    if (item.tipo === "pct_geracao") return kwhGeradoReport * (item.valor / 100);
+    if (item.tipo === "pct_receita") return receitaReport * (item.valor / 100);
+    return 0;
+  };
+  const totalExtras = itensExtras.reduce(
+    (acc, item) => acc + (item.sinal === "receita" ? calcItemExtraValor(item) : -calcItemExtraValor(item)),
+    0,
+  );
+  const lucroLiquidoReport = lucroBaseReport + totalExtras;
+
   if (loadingUsina) {
     return (
       <div className="p-6 space-y-6">
@@ -677,6 +799,12 @@ export default function UsinaDetalhesPage() {
             <TabsTrigger value="relatorios" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Relatórios
+            </TabsTrigger>
+          )}
+          {!isOperador && (
+            <TabsTrigger value="config-relatorio" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Config. Relatório
             </TabsTrigger>
           )}
         </TabsList>
@@ -1005,13 +1133,19 @@ export default function UsinaDetalhesPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Lucro Total
+                  {itensExtras.length > 0 ? "Lucro Líquido Final" : "Lucro Total"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-green-600">
-                  {formatCurrency(lucroTotal)}
+                  {formatCurrency(lucroLiquidoReport)}
                 </div>
+                {itensExtras.length > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Base {formatCurrency(lucroBaseReport)} · Ajustes{" "}
+                    {totalExtras >= 0 ? "+" : "−"}{formatCurrency(Math.abs(totalExtras))}
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -1023,7 +1157,7 @@ export default function UsinaDetalhesPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-blue-600">
-                  {formatCurrency(economiaTotal)}
+                  {formatCurrency(economiaReport)}
                 </div>
               </CardContent>
             </Card>
@@ -1036,12 +1170,33 @@ export default function UsinaDetalhesPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">
-                  {formatNumber(kwhDistribuido)}
+                  {formatNumber(kwhDistribuidoReport)}
                 </div>
                 <p className="text-sm text-muted-foreground">kWh total</p>
               </CardContent>
             </Card>
           </div>
+
+          {itensExtras.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Ajustes / Custos de Operação</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {itensExtras.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm">
+                    <span>{item.label || "(sem descrição)"}</span>
+                    <span
+                      className={`font-mono font-bold ${item.sinal === "receita" ? "text-green-600" : "text-red-600"}`}
+                    >
+                      {item.sinal === "receita" ? "+" : "−"}
+                      {formatCurrency(calcItemExtraValor(item))}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -1059,14 +1214,14 @@ export default function UsinaDetalhesPage() {
                       <TableHead>Cliente</TableHead>
                       <TableHead>Contrato</TableHead>
                       <TableHead className="text-right">Faturas</TableHead>
-                      <TableHead className="text-right">Total Pago</TableHead>
+                      {configColunas.valorComDesconto && <TableHead className="text-right">Total Pago</TableHead>}
                       <TableHead className="text-right">Economia</TableHead>
-                      {!isOperador && <TableHead className="text-right">Lucro</TableHead>}
+                      {!isOperador && configColunas.lucro && <TableHead className="text-right">Lucro</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {clientesOrdenados.map((cliente) => {
-                      const clienteFaturas = faturas.filter((f) => f.clienteId === cliente.id);
+                      const clienteFaturas = faturasReport.filter((f) => f.clienteId === cliente.id);
                       const totalPago = clienteFaturas.reduce(
                         (acc, f) => acc + parseFloat(f.valorComDesconto || "0"),
                         0
@@ -1087,13 +1242,15 @@ export default function UsinaDetalhesPage() {
                             {cliente.numeroContrato || "-"}
                           </TableCell>
                           <TableCell className="text-right">{clienteFaturas.length}</TableCell>
-                          <TableCell className="text-right font-mono">
-                            {formatCurrency(totalPago)}
-                          </TableCell>
+                          {configColunas.valorComDesconto && (
+                            <TableCell className="text-right font-mono">
+                              {formatCurrency(totalPago)}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right font-mono text-blue-600">
                             {formatCurrency(totalEconomia)}
                           </TableCell>
-                          {!isOperador && (
+                          {!isOperador && configColunas.lucro && (
                             <TableCell className="text-right font-mono text-green-600">
                               {formatCurrency(totalLucro)}
                             </TableCell>
@@ -1106,6 +1263,247 @@ export default function UsinaDetalhesPage() {
               )}
             </CardContent>
           </Card>
+          </TabsContent>
+        )}
+
+        {!isOperador && (
+          <TabsContent value="config-relatorio" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-medium">Configurações de Relatório</h3>
+                <p className="text-sm text-muted-foreground">
+                  Controle o que aparece no relatório desta usina, quais faturas entram na contagem e
+                  custos/receitas adicionais.
+                </p>
+              </div>
+              <Button onClick={() => saveConfigMutation.mutate()} disabled={saveConfigMutation.isPending}>
+                {saveConfigMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                )}
+                Salvar Configurações
+              </Button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Colunas do relatório</CardTitle>
+                  <CardDescription>Escolha quais colunas aparecem na tabela.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {([
+                    ["uc", "UC"],
+                    ["endereco", "Endereço"],
+                    ["porcentagemEnvio", "% Envio"],
+                    ["consumo", "Consumo (kWh)"],
+                    ["valorComDesconto", "Valor c/ Desconto"],
+                    ["pagoEquatorial", "Pago Equatorial"],
+                    ["lucro", "Lucro"],
+                    ["saldoKwh", "Saldo kWh"],
+                  ] as [keyof RelatorioColunas, string][]).map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <Label htmlFor={`col-${key}`}>{label}</Label>
+                      <Switch
+                        id={`col-${key}`}
+                        checked={configColunas[key]}
+                        onCheckedChange={(checked) =>
+                          setConfigColunas((prev) => ({ ...prev, [key]: checked }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Resumo financeiro</CardTitle>
+                  <CardDescription>Caixas exibidas no rodapé do relatório.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {([
+                    ["receita", "Receita Total"],
+                    ["custoEquatorial", "Custo Equatorial"],
+                    ["lucro", "Lucro Líquido"],
+                  ] as [keyof RelatorioResumoBoxes, string][]).map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <Label htmlFor={`box-${key}`}>{label}</Label>
+                      <Switch
+                        id={`box-${key}`}
+                        checked={configResumo[key]}
+                        onCheckedChange={(checked) =>
+                          setConfigResumo((prev) => ({ ...prev, [key]: checked }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">Itens extras (contas a mais)</CardTitle>
+                  <CardDescription>
+                    Custos ou receitas adicionais somados ao lucro. Ex.: 10% da geração como custo de
+                    operação (% da geração, R$ 1:1 por kWh, sinal Receita).
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={addItemExtra}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {itensExtras.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhum item extra configurado.
+                  </p>
+                ) : (
+                  itensExtras.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-col gap-2 md:flex-row md:items-center md:gap-2 border rounded-md p-3"
+                    >
+                      <Input
+                        className="md:flex-1"
+                        placeholder="Descrição (ex: Custo de operação)"
+                        value={item.label}
+                        onChange={(e) => updateItemExtra(item.id, { label: e.target.value })}
+                      />
+                      <Select
+                        value={item.tipo}
+                        onValueChange={(v) => updateItemExtra(item.id, { tipo: v as ItemExtra["tipo"] })}
+                      >
+                        <SelectTrigger className="md:w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fixo">Valor fixo (R$)</SelectItem>
+                          <SelectItem value="pct_geracao">% da geração</SelectItem>
+                          <SelectItem value="pct_receita">% da receita</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        step="any"
+                        className="md:w-28"
+                        placeholder={item.tipo === "fixo" ? "R$" : "%"}
+                        value={Number.isFinite(item.valor) ? item.valor : ""}
+                        onChange={(e) =>
+                          updateItemExtra(item.id, { valor: parseFloat(e.target.value) || 0 })
+                        }
+                      />
+                      <Select
+                        value={item.sinal}
+                        onValueChange={(v) => updateItemExtra(item.id, { sinal: v as ItemExtra["sinal"] })}
+                      >
+                        <SelectTrigger className="md:w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="receita">Receita (+)</SelectItem>
+                          <SelectItem value="despesa">Despesa (−)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span
+                        className={`font-mono text-sm md:w-28 text-right ${item.sinal === "receita" ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {item.sinal === "receita" ? "+" : "−"}
+                        {formatCurrency(calcItemExtraValor(item))}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeItemExtra(item.id)}
+                        aria-label="Remover item"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+                {itensExtras.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Pré-visualização calculada sobre as faturas/geração do período exibido na aba
+                    Relatórios.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Faturas no relatório</CardTitle>
+                  <CardDescription>
+                    Desmarque faturas que não devem ser contadas no relatório.
+                  </CardDescription>
+                </div>
+                <MonthPicker value={configFaturasMonth} onChange={setConfigFaturasMonth} />
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const faturasDoMesConfig = allUsinaFaturas
+                    .filter((f) => f.mesReferencia.toUpperCase() === configFaturasMonth.toUpperCase())
+                    .sort((a, b) => {
+                      const ca = clientes.find((c) => c.id === a.clienteId)?.numeroContrato || "";
+                      const cb = clientes.find((c) => c.id === b.clienteId)?.numeroContrato || "";
+                      return ca.localeCompare(cb, undefined, { numeric: true });
+                    });
+                  if (faturasDoMesConfig.length === 0) {
+                    return (
+                      <p className="text-muted-foreground text-center py-6">
+                        Nenhuma fatura para {configFaturasMonth}.
+                      </p>
+                    );
+                  }
+                  return (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">Incluir</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Contrato</TableHead>
+                          <TableHead className="text-right">Valor c/ Desconto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {faturasDoMesConfig.map((f) => {
+                          const cliente = clientes.find((c) => c.id === f.clienteId);
+                          return (
+                            <TableRow key={f.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={f.incluirRelatorio !== false}
+                                  disabled={toggleFaturaRelatorioMutation.isPending}
+                                  onCheckedChange={(checked) =>
+                                    toggleFaturaRelatorioMutation.mutate({
+                                      id: f.id,
+                                      incluir: checked === true,
+                                    })
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">{cliente?.nome || f.clienteId}</TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {cliente?.numeroContrato || "-"}
+                              </TableCell>
+                              <TableCell className="text-right font-mono">
+                                {formatCurrency(parseFloat(f.valorComDesconto || "0"))}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
       </Tabs>

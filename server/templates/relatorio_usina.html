@@ -233,14 +233,14 @@
                 <tr>
                     <th class="text-left">Nº Contrato</th>
                     <th class="text-left">Cliente</th>
-                    <th>UC</th>
-                    <th class="text-left">Endereço</th>
-                    <th>% Envio</th>
-                    <th>Consumo (kWh)</th>
-                    <th>Valor c/ Desconto</th>
-                    <th>Pago Equatorial</th>
-                    <th class="th-lucro">Lucro</th>
-                    <th>Saldo kWh</th>
+                    {% if colunas.uc %}<th>UC</th>{% endif %}
+                    {% if colunas.endereco %}<th class="text-left">Endereço</th>{% endif %}
+                    {% if colunas.porcentagemEnvio %}<th>% Envio</th>{% endif %}
+                    {% if colunas.consumo %}<th>Consumo (kWh)</th>{% endif %}
+                    {% if colunas.valorComDesconto %}<th>Valor c/ Desconto</th>{% endif %}
+                    {% if colunas.pagoEquatorial %}<th>Pago Equatorial</th>{% endif %}
+                    {% if colunas.lucro %}<th class="th-lucro">Lucro</th>{% endif %}
+                    {% if colunas.saldoKwh %}<th>Saldo kWh</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -248,42 +248,72 @@
                 <tr>
                     <td class="text-left font-mono">{{ cliente.numero_contrato }}</td>
                     <td class="text-left">{{ cliente.nome }}</td>
-                    <td class="font-mono">{{ cliente.uc }}</td>
-                    <td class="text-left" style="font-size: 9px;">{{ cliente.endereco }}</td>
-                    <td class="font-mono">{{ cliente.porcentagem_envio }}%</td>
-                    <td class="font-mono">{{ cliente.consumo }}</td>
-                    <td class="font-mono">R$ {{ cliente.valor_com_desconto }}</td>
-                    <td class="font-mono">R$ {{ cliente.valor_equatorial }}</td>
-                    <td class="font-mono text-green font-bold">R$ {{ cliente.lucro }}</td>
-                    <td class="font-mono">{{ cliente.saldo_kwh }}</td>
+                    {% if colunas.uc %}<td class="font-mono">{{ cliente.uc }}</td>{% endif %}
+                    {% if colunas.endereco %}<td class="text-left" style="font-size: 9px;">{{ cliente.endereco }}</td>{% endif %}
+                    {% if colunas.porcentagemEnvio %}<td class="font-mono">{{ cliente.porcentagem_envio }}%</td>{% endif %}
+                    {% if colunas.consumo %}<td class="font-mono">{{ cliente.consumo }}</td>{% endif %}
+                    {% if colunas.valorComDesconto %}<td class="font-mono">R$ {{ cliente.valor_com_desconto }}</td>{% endif %}
+                    {% if colunas.pagoEquatorial %}<td class="font-mono">R$ {{ cliente.valor_equatorial }}</td>{% endif %}
+                    {% if colunas.lucro %}<td class="font-mono text-green font-bold">R$ {{ cliente.lucro }}</td>{% endif %}
+                    {% if colunas.saldoKwh %}<td class="font-mono">{{ cliente.saldo_kwh }}</td>{% endif %}
                 </tr>
                 {% endfor %}
                 <tr class="total-row">
-                    <td class="text-right" colspan="4">TOTAL</td>
-                    <td class="font-mono">{{ total_porcentagem_envio }}%</td>
-                    <td class="font-mono">{{ total_consumo }}</td>
-                    <td class="font-mono">R$ {{ total_valor_com_desconto }}</td>
-                    <td class="font-mono">R$ {{ total_equatorial }}</td>
-                    <td class="font-mono text-green font-bold">R$ {{ total_lucro }}</td>
-                    <td class="font-mono">{{ total_saldo_kwh }}</td>
+                    <td class="text-right" colspan="{{ total_label_colspan }}">TOTAL</td>
+                    {% if colunas.porcentagemEnvio %}<td class="font-mono">{{ total_porcentagem_envio }}%</td>{% endif %}
+                    {% if colunas.consumo %}<td class="font-mono">{{ total_consumo }}</td>{% endif %}
+                    {% if colunas.valorComDesconto %}<td class="font-mono">R$ {{ total_valor_com_desconto }}</td>{% endif %}
+                    {% if colunas.pagoEquatorial %}<td class="font-mono">R$ {{ total_equatorial }}</td>{% endif %}
+                    {% if colunas.lucro %}<td class="font-mono text-green font-bold">R$ {{ total_lucro }}</td>{% endif %}
+                    {% if colunas.saldoKwh %}<td class="font-mono">{{ total_saldo_kwh }}</td>{% endif %}
                 </tr>
             </tbody>
         </table>
 
+        {% if itens_extras %}
+        <div class="section-title">AJUSTES / CUSTOS DE OPERAÇÃO</div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="text-left">Descrição</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in itens_extras %}
+                <tr>
+                    <td class="text-left">{{ item.label }}</td>
+                    <td>{% if item.sinal == 'receita' %}Receita (+){% else %}Despesa (−){% endif %}</td>
+                    <td class="font-mono {% if item.sinal == 'receita' %}text-green{% else %}text-red{% endif %} font-bold">
+                        {% if item.sinal == 'receita' %}+{% else %}−{% endif %}R$ {{ item.valor }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
         <div class="section-title">RESUMO FINANCEIRO</div>
         <div class="resumo-financeiro">
+            {% if resumo_boxes.receita %}
             <div class="resumo-box receita">
                 <div class="resumo-label">RECEITA TOTAL</div>
                 <div class="resumo-valor">R$ {{ total_valor_com_desconto }}</div>
             </div>
+            {% endif %}
+            {% if resumo_boxes.custoEquatorial %}
             <div class="resumo-box despesa">
                 <div class="resumo-label">CUSTO EQUATORIAL</div>
                 <div class="resumo-valor">R$ {{ total_equatorial }}</div>
             </div>
+            {% endif %}
+            {% if resumo_boxes.lucro %}
             <div class="resumo-box lucro">
-                <div class="resumo-label">LUCRO LÍQUIDO</div>
-                <div class="resumo-valor">R$ {{ total_lucro }}</div>
+                <div class="resumo-label">LUCRO LÍQUIDO{% if itens_extras %} FINAL{% endif %}</div>
+                <div class="resumo-valor">R$ {% if itens_extras %}{{ lucro_liquido_final }}{% else %}{{ total_lucro }}{% endif %}</div>
             </div>
+            {% endif %}
         </div>
 
         <div class="footer">

@@ -4,6 +4,7 @@ import {
   faturas,
   geracaoMensal,
   precosKwh,
+  relatorioConfigs,
   auditLogs,
   userProfiles,
   type Usina,
@@ -16,6 +17,8 @@ import {
   type InsertGeracaoMensal,
   type PrecoKwh,
   type InsertPrecoKwh,
+  type RelatorioConfig,
+  type InsertRelatorioConfig,
   type AuditLog,
   type InsertAuditLog,
   type UserProfile,
@@ -64,6 +67,10 @@ export interface IStorage {
   createGeracao(data: InsertGeracaoMensal): Promise<GeracaoMensal>;
   updateGeracao(id: string, data: Partial<InsertGeracaoMensal>): Promise<GeracaoMensal | undefined>;
   deleteGeracao(id: string): Promise<boolean>;
+
+  // Configurações de Relatório (por Usina)
+  getRelatorioConfig(usinaId: string): Promise<RelatorioConfig | undefined>;
+  upsertRelatorioConfig(usinaId: string, data: Partial<InsertRelatorioConfig>): Promise<RelatorioConfig>;
 
   // Audit Logs
   getAuditLogs(limit?: number): Promise<(AuditLog & { user?: User })[]>;
@@ -459,6 +466,41 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return profile;
+  }
+
+  // ==================== CONFIGURAÇÕES DE RELATÓRIO ====================
+  async getRelatorioConfig(usinaId: string): Promise<RelatorioConfig | undefined> {
+    const [config] = await db
+      .select()
+      .from(relatorioConfigs)
+      .where(eq(relatorioConfigs.usinaId, usinaId));
+    return config;
+  }
+
+  async upsertRelatorioConfig(
+    usinaId: string,
+    data: Partial<InsertRelatorioConfig>,
+  ): Promise<RelatorioConfig> {
+    const values = {
+      usinaId,
+      colunas: data.colunas ?? null,
+      resumoBoxes: data.resumoBoxes ?? null,
+      itensExtras: data.itensExtras ?? null,
+    };
+    const [config] = await db
+      .insert(relatorioConfigs)
+      .values(values)
+      .onConflictDoUpdate({
+        target: relatorioConfigs.usinaId,
+        set: {
+          colunas: values.colunas,
+          resumoBoxes: values.resumoBoxes,
+          itensExtras: values.itensExtras,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return config;
   }
 
   async getUsersWithProfiles(): Promise<(User & { profile?: UserProfile })[]> {

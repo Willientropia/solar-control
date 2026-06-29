@@ -97,6 +97,29 @@ import { setupCronJobs } from "./cron";
   }
 
   try {
+    const { pool } = await import("./db");
+    // Seleção manual de faturas no relatório da usina (default: incluída)
+    await pool.query(`
+      ALTER TABLE faturas ADD COLUMN IF NOT EXISTS incluir_relatorio BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    // Configurações de relatório por usina (colunas, resumo e itens extras)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS relatorio_configs (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        usina_id VARCHAR NOT NULL UNIQUE REFERENCES usinas(id) ON DELETE CASCADE,
+        colunas JSONB,
+        resumo_boxes JSONB,
+        itens_extras JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    log("Migração configurações de relatório verificada e aplicada.");
+  } catch (err) {
+    console.error("Failed to apply relatório config migration:", err);
+  }
+
+  try {
     const fixStats = await storage.fixMonthConsistency();
     log(`Database maintenance: ${JSON.stringify(fixStats)}`);
   } catch (err) {

@@ -113,6 +113,9 @@ export const faturas = pgTable("faturas", {
   faturaClienteEnviadaAt: timestamp("fatura_cliente_enviada_at"),
   faturaClienteRecebidaAt: timestamp("fatura_cliente_recebida_at"),
 
+  // Controle de inclusão no relatório da usina (seleção manual)
+  incluirRelatorio: boolean("incluir_relatorio").notNull().default(true),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   createdBy: varchar("created_by").references(() => users.id),
@@ -207,6 +210,71 @@ export const insertPrecoKwhSchema = createInsertSchema(precosKwh).omit({
 
 export type InsertPrecoKwh = z.infer<typeof insertPrecoKwhSchema>;
 export type PrecoKwh = typeof precosKwh.$inferSelect;
+
+// ============ CONFIGURAÇÕES DE RELATÓRIO (por Usina) ============
+// Item extra ("conta a mais") somado/subtraído ao lucro do relatório.
+// tipo: 'fixo' = valor em R$; 'pct_geracao' = % da geração (R$ 1:1 por kWh);
+//       'pct_receita' = % da receita (total valor com desconto).
+// sinal: 'receita' soma ao lucro; 'despesa' subtrai.
+export const itemExtraSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  tipo: z.enum(["fixo", "pct_geracao", "pct_receita"]),
+  valor: z.number(),
+  sinal: z.enum(["receita", "despesa"]),
+});
+export type ItemExtra = z.infer<typeof itemExtraSchema>;
+
+// Visibilidade das colunas da tabela do relatório (Cliente é sempre visível).
+export const relatorioColunasSchema = z.object({
+  uc: z.boolean(),
+  endereco: z.boolean(),
+  porcentagemEnvio: z.boolean(),
+  consumo: z.boolean(),
+  valorComDesconto: z.boolean(),
+  pagoEquatorial: z.boolean(),
+  lucro: z.boolean(),
+  saldoKwh: z.boolean(),
+});
+export type RelatorioColunas = z.infer<typeof relatorioColunasSchema>;
+
+// Visibilidade das caixas do resumo financeiro.
+export const relatorioResumoBoxesSchema = z.object({
+  receita: z.boolean(),
+  custoEquatorial: z.boolean(),
+  lucro: z.boolean(),
+});
+export type RelatorioResumoBoxes = z.infer<typeof relatorioResumoBoxesSchema>;
+
+export const relatorioConfigs = pgTable("relatorio_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  usinaId: varchar("usina_id").notNull().unique().references(() => usinas.id, { onDelete: "cascade" }),
+  colunas: jsonb("colunas").$type<RelatorioColunas>(),
+  resumoBoxes: jsonb("resumo_boxes").$type<RelatorioResumoBoxes>(),
+  itensExtras: jsonb("itens_extras").$type<ItemExtra[]>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const relatorioConfigsRelations = relations(relatorioConfigs, ({ one }) => ({
+  usina: one(usinas, {
+    fields: [relatorioConfigs.usinaId],
+    references: [usinas.id],
+  }),
+}));
+
+export const insertRelatorioConfigSchema = createInsertSchema(relatorioConfigs, {
+  colunas: relatorioColunasSchema.optional(),
+  resumoBoxes: relatorioResumoBoxesSchema.optional(),
+  itensExtras: z.array(itemExtraSchema).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertRelatorioConfig = z.infer<typeof insertRelatorioConfigSchema>;
+export type RelatorioConfig = typeof relatorioConfigs.$inferSelect;
 
 // ============ LOGS DE AUDITORIA (Audit Logs) ============
 export const auditLogs = pgTable("audit_logs", {

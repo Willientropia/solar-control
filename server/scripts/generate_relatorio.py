@@ -87,6 +87,32 @@ def generate_relatorio_pdf(data, output_path):
     potencia_kwp = float(data.get('potenciaKwp', 0) or 0)
     kwh_previsto_mensal = float(data.get('kwhPrevistoMensal', 0) or 0)
 
+    # Configuração de colunas/resumo (None => tudo visível, mantém comportamento legado)
+    default_colunas = {
+        'uc': True, 'endereco': True, 'porcentagemEnvio': True, 'consumo': True,
+        'valorComDesconto': True, 'pagoEquatorial': True, 'lucro': True, 'saldoKwh': True,
+    }
+    colunas = data.get('colunas') or default_colunas
+    default_resumo = {'receita': True, 'custoEquatorial': True, 'lucro': True}
+    resumo_boxes = data.get('resumoBoxes') or default_resumo
+
+    # Número de colunas à esquerda do "% Envio" para o colspan da linha TOTAL.
+    # Sempre: Nº Contrato + Cliente (2). Opcionais antes do % Envio: UC, Endereço.
+    total_label_colspan = 2 + (1 if colunas.get('uc') else 0) + (1 if colunas.get('endereco') else 0)
+
+    # Itens extras (já calculados pelo backend) e lucro líquido final
+    itens_extras = []
+    lucro_liquido_final = total_lucro
+    for item in data.get('itensExtras', []) or []:
+        valor = float(item.get('valor', 0) or 0)
+        sinal = item.get('sinal', 'despesa')
+        lucro_liquido_final += valor if sinal == 'receita' else -valor
+        itens_extras.append({
+            'label': item.get('label', ''),
+            'sinal': sinal,
+            'valor': format_currency(valor),
+        })
+
     template_data = {
         'logo_base64': logo_base64,
         'nome_usina': data.get('nomeUsina', ''),
@@ -102,6 +128,11 @@ def generate_relatorio_pdf(data, output_path):
         'total_lucro': format_currency(total_lucro),
         'total_saldo_kwh': format_number(total_saldo_kwh),
         'total_porcentagem_envio': format_number(total_porcentagem_envio),
+        'colunas': colunas,
+        'resumo_boxes': resumo_boxes,
+        'total_label_colspan': total_label_colspan,
+        'itens_extras': itens_extras,
+        'lucro_liquido_final': format_currency(lucro_liquido_final),
         'data_emissao': datetime.now().strftime('%d/%m/%Y às %H:%M'),
     }
     

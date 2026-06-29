@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { ExcelService } from "./services/excel-service";
 import ExcelJS from "exceljs";
-import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema } from "@shared/schema";
+import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema, relatorioColunasSchema, relatorioResumoBoxesSchema, itemExtraSchema, type RelatorioColunas, type RelatorioResumoBoxes, type ItemExtra } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import { spawn } from "child_process";
@@ -759,6 +759,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error deleting usina:", error);
       res.status(500).json({ message: "Failed to delete usina" });
+    }
+  });
+
+  // ==================== CONFIGURAÇÕES DE RELATÓRIO (por Usina) ====================
+  // Defaults usados quando a usina ainda não tem config salva: tudo visível, sem extras.
+  const defaultRelatorioColunas: RelatorioColunas = {
+    uc: true,
+    endereco: true,
+    porcentagemEnvio: true,
+    consumo: true,
+    valorComDesconto: true,
+    pagoEquatorial: true,
+    lucro: true,
+    saldoKwh: true,
+  };
+  const defaultRelatorioResumoBoxes: RelatorioResumoBoxes = {
+    receita: true,
+    custoEquatorial: true,
+    lucro: true,
+  };
+
+  app.get("/api/usinas/:id/relatorio-config", requireAuth, async (req: any, res) => {
+    try {
+      const config = await storage.getRelatorioConfig(req.params.id);
+      res.json({
+        colunas: config?.colunas ?? defaultRelatorioColunas,
+        resumoBoxes: config?.resumoBoxes ?? defaultRelatorioResumoBoxes,
+        itensExtras: config?.itensExtras ?? [],
+      });
+    } catch (error) {
+      console.error("Error fetching relatório config:", error);
+      res.status(500).json({ message: "Failed to fetch relatório config" });
+    }
+  });
+
+  app.put("/api/usinas/:id/relatorio-config", requireAuth, async (req: any, res) => {
+    try {
+      const usina = await storage.getUsina(req.params.id);
+      if (!usina) {
+        return res.status(404).json({ message: "Usina not found" });
+      }
+
+      const bodySchema = z.object({
+        colunas: relatorioColunasSchema,
+        resumoBoxes: relatorioResumoBoxesSchema,
+        itensExtras: z.array(itemExtraSchema),
+      });
+      const parsed = bodySchema.parse(req.body);
+
+      const config = await storage.upsertRelatorioConfig(req.params.id, parsed);
+      await logAction(req.userId, "editar", "relatorio_config", req.params.id);
+      res.json(config);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Dados inválidos", errors: error.errors });
+      }
+      console.error("Error saving relatório config:", error);
+      res.status(500).json({ message: "Failed to save relatório config" });
     }
   });
 
@@ -2155,9 +2213,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       for (const cliente of usinaClientes) {
         const clienteFaturas = allFaturas.filter(
-          f => f.clienteId === cliente.id && monthMatches(f.mesReferencia)
+          f => f.clienteId === cliente.id && monthMatches(f.mesReferencia) && f.incluirRelatorio !== false
         );
-        
+
         if (clienteFaturas.length > 0) {
           const consumoTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.consumoScee), 0);
           const valorComDescontoTotal = clienteFaturas.reduce((acc, f) => acc + parseBrazilianNumber(f.valorComDesconto), 0);
@@ -2220,6 +2278,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? selectedMonthsRaw[0]
         : `${selectedMonthsRaw[selectedMonthsRaw.length - 1]} a ${selectedMonthsRaw[0]}`;
 
+      // Configuração de relatório da usina (colunas, resumo e itens extras)
+      const relatorioConfig = await storage.getRelatorioConfig(usinaId);
+      const colunas = relatorioConfig?.colunas ?? null;
+      const resumoBoxes = relatorioConfig?.resumoBoxes ?? null;
+
+      // Resolve os itens extras (valor calculado) com base na geração e receita do período
+      const receitaTotal = clientesData.reduce((acc, c) => acc + c.valorComDesconto, 0);
+      const itensExtras = (relatorioConfig?.itensExtras ?? []).map((item: ItemExtra) => {
+        let valorCalculado = 0;
+        if (item.tipo === "fixo") {
+          valorCalculado = item.valor;
+        } else if (item.tipo === "pct_geracao") {
+          valorCalculado = kwhGerado * (item.valor / 100); // R$ 1:1 por kWh
+        } else if (item.tipo === "pct_receita") {
+          valorCalculado = receitaTotal * (item.valor / 100);
+        }
+        return {
+          label: item.label,
+          tipo: item.tipo,
+          sinal: item.sinal,
+          valor: valorCalculado,
+        };
+      });
+
       const reportData = {
         nomeUsina: usina.nome,
         potenciaKwp: usina.potenciaKwp ? parseBrazilianNumber(usina.potenciaKwp) : 0,
@@ -2228,6 +2310,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         kwhGerado,
         kwhPrevisto,
         clientes: clientesData,
+        colunas,
+        resumoBoxes,
+        itensExtras,
       };
       
       const outputDir = path.join(process.cwd(), "uploads", "relatorios");
