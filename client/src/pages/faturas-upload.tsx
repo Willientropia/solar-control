@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Upload,
   FileText,
@@ -43,6 +44,8 @@ import {
   Calculator,
   Info,
   Save,
+  Pencil,
+  Lock,
 } from "lucide-react";
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
@@ -101,6 +104,9 @@ interface PendingFatura {
   pdfUrl: string;
   selectedClienteId: string;
   saved: boolean;
+  // Modo manual: quando true, os campos calculados podem ser editados livremente
+  // e tanto o frontend quanto o backend ignoram os cálculos automáticos.
+  manualOverride: boolean;
 }
 
 // Configuração de categorias de campos com cores
@@ -149,6 +155,7 @@ const FIELD_CATEGORIES = [
         label: "Preço kWh Usado",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "Preço do kWh para o mês de referência conforme cadastrado no sistema"
       },
       { key: "precoKwhNaoCompensado", label: "Preço kWh Não Compensado", type: "text" as const },
@@ -158,6 +165,7 @@ const FIELD_CATEGORIES = [
         label: "Fio B Total",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "Consumo SCEE × Preço Fio B"
       },
       { key: "precoAdcBandeira", label: "Preço ADC Bandeira", type: "text" as const },
@@ -168,6 +176,7 @@ const FIELD_CATEGORIES = [
         label: "Valor Sem Desconto",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "(Consumo SCEE × Preço kWh) + Valor Total - Fio B"
       },
       {
@@ -175,6 +184,7 @@ const FIELD_CATEGORIES = [
         label: "Valor Com Desconto",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "((Consumo SCEE × Preço kWh) × (1 - Desconto%)) + Valor Total - Fio B"
       },
       {
@@ -182,6 +192,7 @@ const FIELD_CATEGORIES = [
         label: "Economia do Cliente",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "Valor Sem Desconto - Valor Com Desconto"
       },
       {
@@ -189,6 +200,7 @@ const FIELD_CATEGORIES = [
         label: "Lucro Estimado",
         type: "text" as const,
         readonly: true,
+        manualEditable: true,
         formula: "Valor Com Desconto - Valor Total"
       },
     ]
@@ -201,12 +213,15 @@ const FIELD_CONFIG: {
   label: string;
   type: "text" | "number";
   readonly?: boolean;
+  manualEditable?: boolean;
   formula?: string;
 }[] = FIELD_CATEGORIES.flatMap(category => category.fields) as any;
 
 export default function FaturasUploadPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [selectedUsinaId, setSelectedUsinaId] = useState<string>("");
   const [precoKwh, setPrecoKwh] = useState<string>("");
@@ -249,6 +264,7 @@ export default function FaturasUploadPage() {
   const pdfUrl = currentFatura?.pdfUrl || "";
   const selectedClienteId = currentFatura?.selectedClienteId || "";
   const selectedCliente = clientes.find((c) => c.id === selectedClienteId);
+  const manualOverride = currentFatura?.manualOverride || false;
 
   // Helper to update current fatura
   const updateCurrentFatura = (updates: Partial<PendingFatura>) => {
@@ -256,6 +272,52 @@ export default function FaturasUploadPage() {
       prev.map((f, i) => (i === currentFaturaIndex ? { ...f, ...updates } : f))
     );
   };
+
+  // Auto-load kWh price when usina is selected
+  useEffect(() => {
+    if (!selectedUsinaId) {
+      setPrecoKwh("");
+      setPrecoKwhInfo(null);
+      return;
+    }
+
+    const loadPrecoKwh = async () => {
+      try {
+        const response = await apiRequest("GET", "/api/precos-kwh");
+        const precos = await response.json();
+
+        if (!precos || precos.length === 0) {
+          console.warn("⚠️ Nenhum preço cadastrado no sistema");
+          return;
+        }
+
+        const allPrecosResponse = await apiRequest("GET", "/api/precos-kwh");
+        const allPrecos = await allPrecosResponse.json();
+        const ultimoPreco = allPrecos.sort((a: any, b: any) => {
+          const [mesA, anoA] = a.mesReferencia.split("/");
+          const [mesB, anoB] = b.mesReferencia.split("/");
+          if (anoB !== anoA) return parseInt(anoB) - parseInt(anoA);
+          const monthOrder = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+          return monthOrder.indexOf(mesB) - monthOrder.indexOf(mesA);
+        })[0];
+
+        const fetchedPrecoKwh = ultimoPreco.precoKwhCalculado;
+        setPrecoKwh(fetchedPrecoKwh);
+        setPrecoKwhInfo({
+          valor: fetchedPrecoKwh,
+          mesOrigem: ultimoPreco.mesReferencia,
+          mesReferencia: ultimoPreco.mesReferencia,
+          usandoFallback: false
+        });
+
+        console.log("✅ Preço kWh carregado automaticamente:", fetchedPrecoKwh, "para", ultimoPreco.mesReferencia);
+      } catch (error) {
+        console.error("❌ Erro ao carregar preço kWh:", error);
+      }
+    };
+
+    loadPrecoKwh();
+  }, [selectedUsinaId]);
 
   const extractMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -461,6 +523,7 @@ export default function FaturasUploadPage() {
             pdfUrl: data.fileUrl || "",
             selectedClienteId: matchedCliente?.id || "",
             saved: false,
+            manualOverride: false,
           },
         ];
 
@@ -485,7 +548,7 @@ export default function FaturasUploadPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async (data: { extractedData: Record<string, string>; clienteId: string; fileUrl: string; forceReplace?: boolean }) => {
+    mutationFn: async (data: { extractedData: Record<string, string>; clienteId: string; fileUrl: string; forceReplace?: boolean; manualOverride?: boolean }) => {
       const normalizedData: Record<string, string> = {};
 
       const numericFields = [
@@ -528,6 +591,7 @@ export default function FaturasUploadPage() {
           extractedData: { ...normalizedData, fileUrl: data.fileUrl },
           clienteId: data.clienteId,
           forceReplace: data.forceReplace || false,
+          manualOverride: data.manualOverride || false,
         }),
       });
 
@@ -637,6 +701,24 @@ export default function FaturasUploadPage() {
       return;
     }
 
+    if (!selectedUsinaId) {
+      toast({
+        title: "Selecione a usina",
+        description: "É necessário selecionar uma usina antes de fazer upload.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!precoKwh) {
+      toast({
+        title: "Preço kWh não carregado",
+        description: "O preço de kWh não foi carregado automaticamente. Verifique se há preços cadastrados no sistema.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Clear previous pending faturas and reset state
     setPendingFaturas([]);
     setCurrentFaturaIndex(0);
@@ -661,8 +743,24 @@ export default function FaturasUploadPage() {
     updateCurrentFatura({ selectedClienteId: clienteId });
   };
 
+  const handleToggleManualOverride = () => {
+    updateCurrentFatura({ manualOverride: !manualOverride });
+    toast({
+      title: !manualOverride ? "Edição manual habilitada" : "Cálculo automático restaurado",
+      description: !manualOverride
+        ? "Você pode digitar livremente os valores da fatura. Os cálculos automáticos serão ignorados ao salvar."
+        : "Os campos calculados voltarão a ser preenchidos automaticamente.",
+    });
+  };
+
   // Function to recalculate all calculated fields based on current form values
   const handleRecalculate = () => {
+    if (manualOverride) {
+      // Em modo manual, os valores são digitados pelo administrador e não devem
+      // ser sobrescritos pelos cálculos automáticos.
+      return;
+    }
+
     if (!selectedClienteId || !selectedCliente) {
       toast({
         title: "Selecione um cliente",
@@ -754,6 +852,10 @@ export default function FaturasUploadPage() {
 
   // Auto-recalculate values when client is selected
   useEffect(() => {
+    if (manualOverride) {
+      console.log("⏸️ [AUTO-RECALCULAR] Modo manual ativo, mantendo valores digitados.");
+      return;
+    }
     if (selectedClienteId && selectedCliente && formData.consumoScee) {
       console.log("🔄 [AUTO-RECALCULAR] Cliente foi selecionado, disparando recálculo automático...");
       handleRecalculate();
@@ -764,7 +866,7 @@ export default function FaturasUploadPage() {
         consumoScee: formData.consumoScee
       });
     }
-  }, [selectedClienteId, selectedCliente]);
+  }, [selectedClienteId, selectedCliente, manualOverride]);
 
   const handleConfirm = () => {
     if (!selectedClienteId) {
@@ -780,6 +882,7 @@ export default function FaturasUploadPage() {
       extractedData: formData,
       clienteId: selectedClienteId,
       fileUrl: pdfUrl,
+      manualOverride,
     };
 
     // Store for possible duplicate confirmation
@@ -901,6 +1004,7 @@ export default function FaturasUploadPage() {
             extractedData: { ...normalizedData, fileUrl: fatura.pdfUrl },
             clienteId: fatura.selectedClienteId,
             forceReplace: replaceAllDuplicates,
+            manualOverride: fatura.manualOverride || false,
           }),
         });
 
@@ -1074,13 +1178,81 @@ export default function FaturasUploadPage() {
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Configuração</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="select-usina">Usina</Label>
+                <Select value={selectedUsinaId} onValueChange={setSelectedUsinaId}>
+                  <SelectTrigger id="select-usina">
+                    <SelectValue placeholder="Selecione a usina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {usinas.map((usina) => (
+                      <SelectItem key={usina.id} value={usina.id}>
+                        {usina.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {precoKwhInfo && (
+                <div className={cn(
+                  "p-3 rounded-lg text-sm",
+                  precoKwhInfo.usandoFallback
+                    ? "bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800"
+                    : "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800"
+                )}>
+                  <p className={cn(
+                    "font-medium mb-1",
+                    precoKwhInfo.usandoFallback
+                      ? "text-amber-900 dark:text-amber-100"
+                      : "text-green-900 dark:text-green-100"
+                  )}>
+                    {precoKwhInfo.usandoFallback ? "⚠️ Preço Carregado" : "✓ Preço Carregado"}
+                  </p>
+                  <p className={precoKwhInfo.usandoFallback
+                    ? "text-amber-800 dark:text-amber-200"
+                    : "text-green-800 dark:text-green-200"
+                  }>
+                    R$ {Number(precoKwhInfo.valor).toFixed(6)}/kWh
+                  </p>
+                  <p className={cn(
+                    "text-xs mt-1",
+                    precoKwhInfo.usandoFallback
+                      ? "text-amber-700 dark:text-amber-300"
+                      : "text-green-700 dark:text-green-300"
+                  )}>
+                    {precoKwhInfo.usandoFallback
+                      ? `Preço de ${precoKwhInfo.mesOrigem} (não há para ${precoKwhInfo.mesReferencia})`
+                      : `Para ${precoKwhInfo.mesOrigem}`
+                    }
+                  </p>
+                </div>
+              )}
+
+              {selectedUsinaId && !precoKwhInfo && (
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Carregando preço de kWh...
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Button
             className="w-full"
             size="lg"
             onClick={handleExtract}
             disabled={
               files.length === 0 ||
-              extractMutation.isPending
+              extractMutation.isPending ||
+              !precoKwh ||
+              !selectedUsinaId
             }
             data-testid="button-process-upload"
           >
@@ -1200,7 +1372,9 @@ export default function FaturasUploadPage() {
                       </h4>
 
                       <div className="grid gap-2 pl-2">
-                        {category.fields.map(({ key, label, readonly, formula }) => {
+                        {category.fields.map(({ key, label, readonly, manualEditable, formula }) => {
+                          // Em modo manual, campos calculados marcados como editáveis liberam a digitação.
+                          const effectiveReadonly = readonly && !(manualOverride && manualEditable);
                           // Tooltip especial para precoKwhUsado
                           let tooltipContent = formula;
                           if (key === "precoKwhUsado" && precoKwhInfo) {
@@ -1232,6 +1406,9 @@ export default function FaturasUploadPage() {
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
+                                {manualEditable && manualOverride && (
+                                  <Pencil className="h-3 w-3 text-primary" />
+                                )}
                               </div>
                               <Input
                                 id={`field-${key}`}
@@ -1240,11 +1417,12 @@ export default function FaturasUploadPage() {
                                 placeholder={`Informe ${label.toLowerCase()}`}
                                 className={cn(
                                   "h-8 text-sm",
-                                  readonly && "bg-muted/50 cursor-not-allowed text-muted-foreground",
+                                  effectiveReadonly && "bg-muted/50 cursor-not-allowed text-muted-foreground",
+                                  manualEditable && manualOverride && "border-primary/60 bg-primary/5",
                                   key === "precoKwhUsado" && precoKwhInfo?.usandoFallback && "border-amber-300 dark:border-amber-700"
                                 )}
-                                readOnly={readonly}
-                                disabled={readonly}
+                                readOnly={effectiveReadonly}
+                                disabled={effectiveReadonly}
                                 data-testid={`input-field-${key}`}
                               />
                             </div>
@@ -1278,15 +1456,31 @@ export default function FaturasUploadPage() {
           </div>
 
           <DialogFooter className="flex justify-between items-center">
-            <Button
-              variant="secondary"
-              onClick={handleRecalculate}
-              disabled={!selectedClienteId}
-              className="mr-auto"
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              Recalcular
-            </Button>
+            <div className="flex gap-2 mr-auto">
+              {isAdmin && (
+                <Button
+                  variant={manualOverride ? "default" : "outline"}
+                  onClick={handleToggleManualOverride}
+                  title="Digitar manualmente os valores da fatura, ignorando os cálculos automáticos"
+                >
+                  {manualOverride ? (
+                    <Pencil className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Lock className="h-4 w-4 mr-2" />
+                  )}
+                  {manualOverride ? "Edição manual ativa" : "Editar manualmente"}
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={handleRecalculate}
+                disabled={!selectedClienteId || manualOverride}
+                title={manualOverride ? "Indisponível no modo de edição manual" : undefined}
+              >
+                <Calculator className="h-4 w-4 mr-2" />
+                Recalcular
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"

@@ -1086,7 +1086,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "PDF file is required" });
       }
 
-      const precoKwh = parseFloat(req.body.precoKwh || "0.85");
+      // Parse precoKwh with fallback to 0.85 if not provided or zero
+      let precoKwh = parseFloat(req.body.precoKwh || "0");
+      if (precoKwh <= 0) {
+        precoKwh = 0.85;
+      }
       const desconto = parseFloat(req.body.desconto || "25");
 
       const extractedData = await extractPdfData(req.file.path, precoKwh, desconto);
@@ -1118,7 +1122,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "PDF file is required" });
       }
 
-      const precoKwh = parseFloat(req.body.precoKwh || "0.85");
+      // Parse precoKwh with fallback to 0.85 if not provided or zero
+      let precoKwh = parseFloat(req.body.precoKwh || "0");
+      if (precoKwh <= 0) {
+        precoKwh = 0.85;
+      }
       const desconto = parseFloat(req.body.desconto || "25");
 
       const extractedData = await extractPdfData(req.file.path, precoKwh, desconto);
@@ -1256,7 +1264,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Confirm and save extracted fatura
   app.post("/api/faturas/confirm", requireAuth, async (req: any, res) => {
     try {
-      const { extractedData, clienteId, usinaId, forceReplace } = req.body;
+      const { extractedData, clienteId, usinaId, forceReplace, manualOverride } = req.body;
 
       if (!extractedData || !clienteId) {
         return res.status(400).json({ message: "extractedData and clienteId are required" });
@@ -1368,16 +1376,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
          lucroCalculado = valorComDesconto - valorTotal;
        }
        
+      // Modo manual (somente administradores): o frontend envia os valores digitados
+      // e devemos gravá-los diretamente, ignorando os cálculos automáticos acima.
+      const isManual = manualOverride === true;
+      const parseManual = (v: any) => parseFloat(normalizeDecimal(v));
+      const pickManual = (raw: any, fallback: number) => {
+        if (!isManual) return fallback;
+        const num = parseManual(raw);
+        return isNaN(num) ? fallback : num;
+      };
+
+      const fioBFinal = pickManual(extractedData.fioB, fioBValor);
+      const valorSemDescontoOut = pickManual(extractedData.valorSemDesconto, valorSemDescontoFinal);
+      const valorComDescontoOut = pickManual(extractedData.valorComDesconto, valorComDesconto);
+      const economiaOut = pickManual(extractedData.economia, economia);
+      const lucroOut = pickManual(extractedData.lucro, lucroCalculado);
+
+      if (isManual) {
+        console.log(`\n[EDIÇÃO MANUAL] Valores digitados pelo administrador serão gravados diretamente:`);
+        console.log(`  Fio B: R$ ${fioBFinal.toFixed(2)}`);
+        console.log(`  Valor Sem Desconto: R$ ${valorSemDescontoOut.toFixed(2)}`);
+        console.log(`  Valor Com Desconto: R$ ${valorComDescontoOut.toFixed(2)}`);
+        console.log(`  Economia: R$ ${economiaOut.toFixed(2)}`);
+        console.log(`  Lucro: R$ ${lucroOut.toFixed(2)}\n`);
+      }
+
        const normalizedData = {
          ...extractedData,
          mesReferencia: normalizeMonthReference(extractedData.mesReferencia),
          consumoScee: normalizeDecimal(extractedData.consumoScee),
          consumoNaoCompensado: normalizeDecimal(extractedData.consumoNaoCompensado),
-        valorSemDesconto: valorSemDescontoFinal.toFixed(2),
-        valorComDesconto: valorComDesconto.toFixed(2),
-        economia: economia.toFixed(2),
-        fioB: fioBValor.toFixed(2),
-        lucro: lucroCalculado.toFixed(2),
+        valorSemDesconto: valorSemDescontoOut.toFixed(2),
+        valorComDesconto: valorComDescontoOut.toFixed(2),
+        economia: economiaOut.toFixed(2),
+        fioB: fioBFinal.toFixed(2),
+        lucro: lucroOut.toFixed(2),
         saldoKwh: normalizeDecimal(extractedData.saldoKwh),
         consumoKwh: normalizeDecimal(extractedData.consumoKwh),
         energiaInjetada: normalizeDecimal(extractedData.energiaInjetada),
