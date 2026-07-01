@@ -701,24 +701,6 @@ export default function FaturasUploadPage() {
       return;
     }
 
-    if (!selectedUsinaId) {
-      toast({
-        title: "Selecione a usina",
-        description: "É necessário selecionar uma usina antes de fazer upload.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!precoKwh) {
-      toast({
-        title: "Preço kWh não carregado",
-        description: "O preço de kWh não foi carregado automaticamente. Verifique se há preços cadastrados no sistema.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     // Clear previous pending faturas and reset state
     setPendingFaturas([]);
     setCurrentFaturaIndex(0);
@@ -1250,9 +1232,7 @@ export default function FaturasUploadPage() {
             onClick={handleExtract}
             disabled={
               files.length === 0 ||
-              extractMutation.isPending ||
-              !precoKwh ||
-              !selectedUsinaId
+              extractMutation.isPending
             }
             data-testid="button-process-upload"
           >
