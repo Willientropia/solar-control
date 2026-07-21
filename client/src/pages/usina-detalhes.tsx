@@ -254,8 +254,11 @@ export default function UsinaDetalhesPage() {
         title: "PDF gerado!",
         description: "A fatura foi gerada com sucesso.",
       });
+      // Mesma correção do fatura-status-card: rota com Content-Disposition + navegação
+      // direta, já que window.open() após um await é bloqueado no iOS/PWA.
       if (data.pdfUrl) {
-        window.open(addTokenToUrl(data.pdfUrl), "_blank");
+        const filename = data.pdfUrl.split("/").pop();
+        window.location.href = addTokenToUrl(`/api/faturas/generated/${filename}`);
       }
     },
     onError: (error: Error) => {
@@ -280,8 +283,11 @@ export default function UsinaDetalhesPage() {
         title: "Relatório gerado!",
         description: "O relatório foi gerado com sucesso.",
       });
-      if (data.pdfUrl) {
-        window.open(addTokenToUrl(data.pdfUrl), "_blank");
+      // Download via rota autenticada com Content-Disposition — window.open() após
+      // um await é bloqueado no iOS/PWA, window.location.href funciona.
+      const url = data.downloadUrl || data.pdfUrl;
+      if (url) {
+        window.location.href = addTokenToUrl(url);
       }
     },
     onError: (error: Error) => {

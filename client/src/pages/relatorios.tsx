@@ -31,6 +31,7 @@ import {
 import { MonthPicker } from "@/components/month-picker";
 import type { Usina } from "@shared/schema";
 import { formatNumber, formatCurrency, getCurrentMonthRef } from "@/lib/utils";
+import { addTokenToUrl } from "@/lib/queryClient";
 
 interface ReportData {
   lucroTotal: number;
@@ -64,29 +65,13 @@ export default function RelatoriosPage() {
   const handleExportCSV = () => {
     if (!report?.detalhamentoPorCliente) return;
 
-    const headers = ["Cliente", "UC", "Consumo (kWh)", "Valor Pago", "Economia", "Lucro"];
-    const rows = report.detalhamentoPorCliente.map((row) => [
-      row.clienteNome,
-      row.unidadeConsumidora,
-      row.consumoTotal,
-      row.valorPago.toFixed(2),
-      row.economia.toFixed(2),
-      row.lucro.toFixed(2),
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `relatorio_${selectedPeriodo.replace("/", "_")}.csv`;
-    link.style.display = 'none';
-    link.click();
-
-    // Clean up the object URL after a small delay to ensure download starts
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 100);
+    // O CSV é montado no servidor e servido com Content-Disposition: no iOS/PWA
+    // o atributo <a download> de um Blob é ignorado e nada é baixado.
+    const params = new URLSearchParams({
+      usinaId: selectedUsinaId,
+      periodo: selectedPeriodo,
+    });
+    window.location.href = addTokenToUrl(`/api/relatorios/export.csv?${params}`);
   };
 
   return (

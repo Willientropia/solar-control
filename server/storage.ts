@@ -32,7 +32,7 @@ import {
   type OrganizationMember,
 } from "@shared/models/organizations";
 import { db } from "./db";
-import { eq, desc, and, or, sql } from "drizzle-orm";
+import { eq, desc, and, or, sql, type AnyColumn } from "drizzle-orm";
 import { normalizeUC } from "@shared/uc-utils";
 
 export interface IStorage {
@@ -168,23 +168,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClienteByUC(unidadeConsumidora: string): Promise<Cliente | undefined> {
-    // Aceita UC nova (formatada ou só dígitos) OU legada.
-    // Prioriza match pela UC nova normalizada (remove pontos/traços/zeros à esquerda).
+    // Aceita a UC em qualquer grafia — "3.235.881.012-93", "323588101293" ou
+    // "0000323588101293" são a mesma coisa. Normaliza os DOIS lados da comparação
+    // (o valor buscado e o gravado no banco), já que registros antigos podem ter
+    // sido salvos com pontuação ou zeros à esquerda.
     const normalized = normalizeUC(unidadeConsumidora);
+    if (!normalized) return undefined;
 
-    if (normalized) {
-      const [byNova] = await db
-        .select()
-        .from(clientes)
-        .where(eq(clientes.unidadeConsumidoraNova, normalized));
-      if (byNova) return byNova;
-    }
+    // Equivalente SQL de normalizeUC. Usa '[^0-9]' em vez de '\D' de propósito:
+    // a barra invertida seria consumida pelo escaping da string e o replace viraria no-op.
+    const normalizedCol = (col: AnyColumn) =>
+      sql`ltrim(regexp_replace(coalesce(${col}, ''), '[^0-9]', '', 'g'), '0')`;
 
-    // Fallback: match exato na UC legada (formato antigo, sem pontos).
+    // Prioriza a UC nova; cai para a legada se não houver match.
+    const [byNova] = await db
+      .select()
+      .from(clientes)
+      .where(eq(normalizedCol(clientes.unidadeConsumidoraNova), normalized));
+    if (byNova) return byNova;
+
     const [byLegada] = await db
       .select()
       .from(clientes)
-      .where(eq(clientes.unidadeConsumidora, unidadeConsumidora));
+      .where(eq(normalizedCol(clientes.unidadeConsumidora), normalized));
     return byLegada;
   }
 

@@ -14,3 +14,7 @@ backups/
 *.sql
 *.sql.gz
 *.log
+
+# Python
+__pycache__/
+*.pyc

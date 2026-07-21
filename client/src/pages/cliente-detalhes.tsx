@@ -159,8 +159,11 @@ export default function ClienteDetalhesPage() {
       return response.json();
     },
     onSuccess: (data) => {
-      if (data.pdfUrl) {
-        window.open(addTokenToUrl(data.pdfUrl), "_blank");
+      // Download via rota autenticada com Content-Disposition — window.open() após
+      // um await é bloqueado no iOS/PWA, window.location.href funciona.
+      const url = data.downloadUrl || data.pdfUrl;
+      if (url) {
+        window.location.href = addTokenToUrl(url);
       }
       toast({ title: "Relatório gerado com sucesso!" });
     },

@@ -15,6 +15,16 @@ export function normalizeUC(uc: string | null | undefined): string | null {
 }
 
 /**
+ * Compara duas UCs ignorando formatação (pontos, traços, espaços, zeros à esquerda).
+ * "3.235.881.012-93" === "323588101293" === "0000323588101293".
+ */
+export function ucMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeUC(a);
+  const nb = normalizeUC(b);
+  return !!na && !!nb && na === nb;
+}
+
+/**
  * Formata UC nova para exibição: "348014601252" → "3.480.146.012-52".
  * Se UC tiver formato inesperado, retorna string original.
  */

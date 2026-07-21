@@ -13,6 +13,7 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import * as AuthService from "./services/auth-service";
 import { requireAuth, requireRole, requireAdmin, requireAuthOrQuery } from "./middleware/auth";
+import { normalizeUC, ucMatches } from "@shared/uc-utils";
 
 // Configure multer for PDF uploads
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -707,7 +708,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       // Auto-create the usina's own UC as a non-paying client (UC matriz).
       // Normaliza a UC da usina (só dígitos) para ocupar o campo obrigatório nova.
-      const ucMatrizNormalizada = String(usina.unidadeConsumidora).replace(/\D/g, "").replace(/^0+/, "") || usina.unidadeConsumidora;
+      const ucMatrizNormalizada = normalizeUC(usina.unidadeConsumidora) || usina.unidadeConsumidora;
       const clienteMatriz = await storage.createCliente({
         nome: `${usina.nome} - UC Matriz`,
         unidadeConsumidora: usina.unidadeConsumidora,
@@ -1191,6 +1192,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.sendFile(filePath);
     } else {
       res.status(404).json({ message: "PDF not found" });
+    }
+  });
+
+  // Serve relatórios gerados com Content-Disposition para forçar download.
+  // Mesma correção aplicada às faturas: no iOS/PWA o atributo <a download> é ignorado
+  // e window.open() após um await é bloqueado — só o header do servidor funciona.
+  const RELATORIO_DIRS: Record<string, string> = {
+    usina: "relatorios",
+    cliente: "relatorios_clientes",
+  };
+
+  app.get("/api/relatorios/download/:tipo/:filename", requireAuthOrQuery, (req, res) => {
+    const dir = RELATORIO_DIRS[req.params.tipo];
+    if (!dir) {
+      return res.status(400).json({ message: "Tipo de relatório inválido" });
+    }
+    const filename = path.basename(req.params.filename); // sanitize
+    const filePath = path.join(process.cwd(), "uploads", dir, filename);
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.sendFile(filePath);
+    } else {
+      res.status(404).json({ message: "Relatório não encontrado" });
     }
   });
 
@@ -2052,9 +2077,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
 
           const pdfUrl = `/uploads/relatorios_clientes/${outputFilename}`;
+          // downloadUrl força Content-Disposition — é o que funciona no iOS/PWA
+          const downloadUrl = `/api/relatorios/download/cliente/${encodeURIComponent(outputFilename)}`;
           await logAction(req.userId, "gerar_relatorio", "cliente", clienteId);
 
-          res.json({ success: true, pdfUrl });
+          res.json({ success: true, pdfUrl, downloadUrl });
         } catch (e) {
           console.error("Error parsing relatório result:", stdout, e);
           res.status(500).json({ message: "Failed to parse relatório generation result" });
@@ -2385,9 +2412,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
           
           const pdfUrl = `/uploads/relatorios/${outputFilename}`;
+          // downloadUrl força Content-Disposition — é o que funciona no iOS/PWA
+          const downloadUrl = `/api/relatorios/download/usina/${encodeURIComponent(outputFilename)}`;
           await logAction(req.userId, "gerar_relatorio", "usina", usinaId, { periodo });
-          
-          res.json({ success: true, pdfUrl });
+
+          res.json({ success: true, pdfUrl, downloadUrl });
         } catch (e) {
           console.error("Error parsing report result:", stdout, e);
           res.status(500).json({ message: "Failed to parse report generation result" });
@@ -2540,66 +2569,104 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== RELATÓRIOS (Admin Only) ====================
+  async function buildRelatorio(usinaId?: string, periodo?: string) {
+    // Get all faturas
+    const todasFaturas = await storage.getFaturas();
+
+    // Filter by usina if specified
+    let faturasFiltradas = todasFaturas;
+    if (usinaId && usinaId !== "all") {
+      const clientesUsina = await storage.getClientesByUsina(usinaId);
+      const clienteIds = new Set(clientesUsina.map(c => c.id));
+      faturasFiltradas = todasFaturas.filter(f => clienteIds.has(f.clienteId));
+    }
+
+    // Filter by period if specified
+    if (periodo) {
+      faturasFiltradas = faturasFiltradas.filter(f => f.mesReferencia === periodo);
+    }
+
+    // Calculate totals
+    const lucroTotal = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0);
+    const economiaTotalClientes = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0);
+    const kwhDistribuido = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
+    const saldoCreditos = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.saldoKwh || "0"), 0);
+
+    // Group by client
+    const clienteMap = new Map<string, typeof faturasFiltradas>();
+    faturasFiltradas.forEach(f => {
+      const key = f.clienteId;
+      if (!clienteMap.has(key)) {
+        clienteMap.set(key, []);
+      }
+      clienteMap.get(key)!.push(f);
+    });
+
+    const detalhamentoPorCliente = Array.from(clienteMap.entries()).map(([clienteId, faturas]) => {
+      const cliente = faturas[0].cliente;
+      return {
+        clienteNome: cliente?.nome || "Cliente",
+        unidadeConsumidora: cliente?.unidadeConsumidora || "-",
+        consumoTotal: faturas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0),
+        valorPago: faturas.reduce((acc, f) => acc + parseFloat(f.valorComDesconto || "0"), 0),
+        economia: faturas.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0),
+        lucro: faturas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0),
+      };
+    });
+
+    return {
+      lucroTotal,
+      economiaTotalClientes,
+      kwhDistribuido,
+      saldoCreditos,
+      clientesAtendidos: clienteMap.size,
+      faturasProcessadas: faturasFiltradas.length,
+      detalhamentoPorCliente,
+    };
+  }
+
   app.get("/api/relatorios", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { usinaId, periodo } = req.query;
-      
-      // Get all faturas
-      const todasFaturas = await storage.getFaturas();
-      
-      // Filter by usina if specified
-      let faturasFiltradas = todasFaturas;
-      if (usinaId && usinaId !== "all") {
-        const clientesUsina = await storage.getClientesByUsina(usinaId as string);
-        const clienteIds = new Set(clientesUsina.map(c => c.id));
-        faturasFiltradas = todasFaturas.filter(f => clienteIds.has(f.clienteId));
-      }
-
-      // Filter by period if specified
-      if (periodo) {
-        faturasFiltradas = faturasFiltradas.filter(f => f.mesReferencia === periodo);
-      }
-
-      // Calculate totals
-      const lucroTotal = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0);
-      const economiaTotalClientes = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0);
-      const kwhDistribuido = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0);
-      const saldoCreditos = faturasFiltradas.reduce((acc, f) => acc + parseFloat(f.saldoKwh || "0"), 0);
-
-      // Group by client
-      const clienteMap = new Map<string, typeof faturasFiltradas>();
-      faturasFiltradas.forEach(f => {
-        const key = f.clienteId;
-        if (!clienteMap.has(key)) {
-          clienteMap.set(key, []);
-        }
-        clienteMap.get(key)!.push(f);
-      });
-
-      const detalhamentoPorCliente = Array.from(clienteMap.entries()).map(([clienteId, faturas]) => {
-        const cliente = faturas[0].cliente;
-        return {
-          clienteNome: cliente?.nome || "Cliente",
-          unidadeConsumidora: cliente?.unidadeConsumidora || "-",
-          consumoTotal: faturas.reduce((acc, f) => acc + parseFloat(f.consumoScee || "0"), 0),
-          valorPago: faturas.reduce((acc, f) => acc + parseFloat(f.valorComDesconto || "0"), 0),
-          economia: faturas.reduce((acc, f) => acc + parseFloat(f.economia || "0"), 0),
-          lucro: faturas.reduce((acc, f) => acc + parseFloat(f.lucro || "0"), 0),
-        };
-      });
-
-      res.json({
-        lucroTotal,
-        economiaTotalClientes,
-        kwhDistribuido,
-        saldoCreditos,
-        clientesAtendidos: clienteMap.size,
-        faturasProcessadas: faturasFiltradas.length,
-        detalhamentoPorCliente,
-      });
+      res.json(await buildRelatorio(usinaId as string, periodo as string));
     } catch (error) {
       console.error("Error generating report:", error);
       res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Exporta o detalhamento em CSV pelo servidor. O download precisa vir com
+  // Content-Disposition porque no iOS/PWA o <a download> de um Blob é ignorado.
+  app.get("/api/relatorios/export.csv", requireAuthOrQuery, requireAdmin, async (req, res) => {
+    try {
+      const { usinaId, periodo } = req.query;
+      const relatorio = await buildRelatorio(usinaId as string, periodo as string);
+
+      const escapeCsv = (v: string | number) => {
+        const s = String(v);
+        return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const headers = ["Cliente", "UC", "Consumo (kWh)", "Valor Pago", "Economia", "Lucro"];
+      const rows = relatorio.detalhamentoPorCliente.map(r => [
+        r.clienteNome,
+        r.unidadeConsumidora,
+        r.consumoTotal.toFixed(2),
+        r.valorPago.toFixed(2),
+        r.economia.toFixed(2),
+        r.lucro.toFixed(2),
+      ]);
+
+      const csv = [headers, ...rows].map(cols => cols.map(escapeCsv).join(",")).join("\n");
+      const filename = `relatorio_${String(periodo || "todos").replace("/", "_")}.csv`;
+
+      // BOM para o Excel reconhecer UTF-8 (acentos nos nomes dos clientes)
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send("﻿" + csv);
+    } catch (error) {
+      console.error("Error exporting report CSV:", error);
+      res.status(500).json({ message: "Failed to export report" });
     }
   });
 
@@ -3023,11 +3090,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Normaliza UC: só dígitos, sem zeros à esquerda.
-      const normalize = (v: any): string | null => {
-        if (v === null || v === undefined) return null;
-        const digits = String(v).replace(/\D/g, '').replace(/^0+/, '');
-        return digits || null;
-      };
+      const normalize = (v: any): string | null =>
+        v === null || v === undefined ? null : normalizeUC(String(v));
 
       const clientes = await storage.getClientes();
       const results = {
@@ -3051,7 +3115,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           continue;
         }
 
-        if (cliente.unidadeConsumidoraNova === ucNova) {
+        if (ucMatches(cliente.unidadeConsumidoraNova, ucNova)) {
           results.jaAtualizados++;
           continue;
         }
@@ -3292,12 +3356,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Encontrar cliente pela UC (nova normalizada ou legada) ou CPF
         let cliente = null;
         if (uc) {
-          const ucNormalized = String(uc).replace(/\D/g, '').replace(/^0+/, '');
-          cliente = clientes.find(c => {
-            const nova = (c.unidadeConsumidoraNova || '').replace(/\D/g, '').replace(/^0+/, '');
-            if (nova && ucNormalized && nova === ucNormalized) return true;
-            return c.unidadeConsumidora === uc;
-          });
+          cliente = clientes.find(
+            c => ucMatches(c.unidadeConsumidoraNova, uc) || ucMatches(c.unidadeConsumidora, uc)
+          );
         }
         if (!cliente && cpf) {
           cliente = clientes.find(c => c.cpfCnpj === cpf);

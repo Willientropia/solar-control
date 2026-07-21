@@ -122,9 +122,13 @@ def extract_adc_bandeira(text):
 
 def extract_ciclo_geracao(text):
     # "GERAÇÃO CICLO (3/2026) KWH: UC 10040141363 : 8.765,98, UC ..."
-    match = re.search(r'GERA..O CICLO \((\d{1,2}/\d{4})\) KWH: UC (\d+) : ([\d\.\,]+)', text)
+    # A UC geradora pode vir pontuada ("3.235.881.012-93") ou crua.
+    match = re.search(
+        r'GERA..O CICLO \((\d{1,2}/\d{4})\) KWH: UC\s+' + UC_PATTERN + r'\s*:\s*([\d\.\,]+)',
+        text
+    )
     if match:
-        return match.group(1), match.group(2), match.group(3).strip().rstrip(',')
+        return match.group(1), _normalize_uc(match.group(2)), match.group(3).strip().rstrip(',')
     return None, None, None
 
 
@@ -164,32 +168,52 @@ def _normalize_uc(uc):
     return digits or None
 
 
+# A UC pode vir pontuada ("3.235.881.012-93"), só com o hífen ("3235881012-93")
+# ou totalmente crua ("323588101293" / "10023560892"). As alternativas são testadas
+# nessa ordem: a pontuada precisa vir antes, senão "\d{6,15}" casaria só o "3" inicial.
+UC_PATTERN = (
+    r'(\d\s*\.\s*\d{3}\s*\.\s*\d{3}\s*\.\s*\d{3}\s*-\s*\d{2}'  # 3.235.881.012-93
+    r'|\d{10}\s*-\s*\d{2}'                                      # 3235881012-93
+    r'|\d{6,15})'                                               # 323588101293 / 10023560892
+)
+
+# Formato pontuado completo (12 dígitos em 4 grupos). Não colide com CPF
+# ("123.456.789-01" tem só 3 grupos) nem com CNPJ (que tem "/").
+UC_PONTUADA = r'\d\s*\.\s*\d{3}\s*\.\s*\d{3}\s*\.\s*\d{3}\s*-\s*\d{2}'
+
+# Rótulos que antecedem a UC conforme o layout da fatura.
+_UC_ANCHORS = [
+    r'RAMAL:\s*\d+\s*%',                    # layout 2026+ e intermediário
+    r'Consulte pela Chave de Acesso em:',   # layout antigo
+    r'UNIDADE\s+CONSUMIDORA\s*:?',          # variações com rótulo explícito
+    r'\bUC\s*:',
+]
+
+
 def extract_uc(text):
     """
-    A UC aparece de três formas conforme o layout:
-    - Layout 2026+ (formatado): "RAMAL: 0%\n3.480.146.012-52"
-    - Layout intermediário:     "RAMAL: 0% 500031319"
-    - Layout antigo:            "Consulte pela Chave de Acesso em:\n10038900210"
+    Extrai a UC independente do formato em que a distribuidora imprimiu.
 
-    Retorna UC normalizada (apenas dígitos, sem zeros à esquerda).
+    Aceita os dois formatos como equivalentes:
+    - "3.235.881.012-93" (pontuado, layout 2026+)
+    - "323588101293"     (cru, mesma UC sem pontuação)
+    - "10023560892"      (UC legada de 11 dígitos)
+
+    Retorna sempre a UC normalizada (apenas dígitos, sem zeros à esquerda),
+    para que qualquer uma das grafias acima resulte no mesmo valor.
     """
-    # Formato novo com pontos/hífen: X.XXX.XXX.XXX-XX (mesma linha ou linha seguinte do RAMAL)
-    match = re.search(r'RAMAL:\s*0%\s*\n?\s*(\d\.\d{3}\.\d{3}\.\d{3}-\d{2})', text)
-    if match:
-        return _normalize_uc(match.group(1))
+    for anchor in _UC_ANCHORS:
+        match = re.search(anchor + r'\s*\n?\s*' + UC_PATTERN, text, re.IGNORECASE)
+        if match:
+            uc = _normalize_uc(match.group(1))
+            if uc:
+                return uc
 
-    # Intermediário: número simples após "RAMAL: 0%"
-    match = re.search(r'RAMAL:\s*0%\s+(\d{6,15})\b', text)
+    # Sem rótulo reconhecido: aceita uma UC pontuada solta no documento.
+    match = re.search(UC_PONTUADA, text)
     if match:
-        return _normalize_uc(match.group(1))
-    match = re.search(r'RAMAL:\s*0%\s*\n\s*(\d{6,15})\b', text)
-    if match:
-        return _normalize_uc(match.group(1))
+        return _normalize_uc(match.group(0))
 
-    # Antigo: número na linha após "Consulte pela Chave de Acesso em:"
-    match = re.search(r'Consulte pela Chave de Acesso em:\s*\n\s*(\d{6,15})\b', text)
-    if match:
-        return _normalize_uc(match.group(1))
     return None
 
 

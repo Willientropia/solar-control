@@ -50,6 +50,7 @@ import {
 import { queryClient, apiRequest, authenticatedFetch, addTokenToUrl } from "@/lib/queryClient";
 import type { Cliente, Usina } from "@shared/schema";
 import { cn, parseToNumber, formatNumber, normalizeMonth } from "@/lib/utils";
+import { ucMatches } from "@shared/uc-utils";
 
 interface ExtractedData {
   success: boolean;
@@ -347,17 +348,14 @@ export default function FaturasUploadPage() {
       });
 
       // Buscar cliente pela UC em TODOS os clientes (não apenas os filtrados).
-      // Normaliza (só dígitos, sem zeros à esquerda) pra casar UC nova formatada ("3.480.146.012-52"),
-      // UC nova crua ("348014601252") ou UC legada ("10023560892").
-      const normalizeUC = (uc?: string | null) =>
-        (uc || "").replace(/\D/g, "").replace(/^0+/, "");
-      const extractedUC = normalizeUC(data.unidadeConsumidora);
-      const matchedCliente = clientes.find((c) => {
-        const nova = normalizeUC(c.unidadeConsumidoraNova);
-        if (nova && extractedUC && nova === extractedUC) return true;
-        const legada = normalizeUC(c.unidadeConsumidora);
-        return !!legada && !!extractedUC && legada === extractedUC;
-      });
+      // ucMatches ignora pontuação e zeros à esquerda, então casa UC nova formatada
+      // ("3.480.146.012-52"), UC nova crua ("348014601252") ou UC legada ("10023560892").
+      const extractedUC = data.unidadeConsumidora;
+      const matchedCliente = clientes.find(
+        (c) =>
+          ucMatches(c.unidadeConsumidoraNova, extractedUC) ||
+          ucMatches(c.unidadeConsumidora, extractedUC)
+      );
 
       // Se encontrou o cliente e não há usina selecionada, definir automaticamente
       if (matchedCliente && !selectedUsinaId) {
