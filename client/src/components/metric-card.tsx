@@ -32,7 +32,10 @@ export function MetricCard({
             <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
               {title}
             </p>
-            <p className="text-2xl font-semibold font-mono mt-2 truncate">
+            {/* Número solto usa os algarismos proporcionais da fonte de texto:
+                largura fixa (mono/tabular) só faz sentido em colunas que
+                precisam alinhar verticalmente. */}
+            <p className="text-2xl font-semibold mt-2 truncate">
               {value}
             </p>
             {subtitle && (

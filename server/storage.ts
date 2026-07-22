@@ -97,21 +97,6 @@ export interface IStorage {
   addOrganizationMember(data: { organizationId: string; userId: string; role: string }): Promise<OrganizationMember>;
   updateOrganizationMember(organizationId: string, userId: string, data: Partial<{ role: string; isActive: boolean }>): Promise<OrganizationMember | undefined>;
 
-  // Dashboard Stats
-  getDashboardStats(): Promise<{
-    totalUsinas: number;
-    totalClientes: number;
-    faturasPendentes: number;
-    faturasProcessadas: number;
-    faturasEmAtraso: number;
-    lucroMensal: number;
-    economiaTotalClientes: number;
-    kwhGeradoMes: number;
-    saldoTotalKwh: number;
-  }>;
-  
-  // Faturas em atraso
-  getFaturasEmAtraso(): Promise<(Fatura & { cliente?: Cliente })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -632,76 +617,6 @@ export class DatabaseStorage implements IStorage {
       )
       .returning();
     return member;
-  }
-
-  // ==================== DASHBOARD STATS ====================
-  async getDashboardStats() {
-    const [usinasCount] = await db.select({ count: sql<number>`count(*)` }).from(usinas);
-    const [clientesCount] = await db.select({ count: sql<number>`count(*)` }).from(clientes);
-    const [faturasPendentesCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(faturas)
-      .where(eq(faturas.status, "pendente"));
-    const [faturasProcessadasCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(faturas)
-      .where(eq(faturas.status, "processada"));
-
-    // Get current month stats
-    const currentMonth = new Date().toLocaleString("pt-BR", { month: "short" });
-    const currentYear = new Date().getFullYear();
-    const mesReferencia = `${currentMonth.charAt(0).toUpperCase() + currentMonth.slice(1)}/${currentYear}`;
-
-    const [lucroStats] = await db
-      .select({
-        lucro: sql<number>`COALESCE(SUM(CAST(lucro AS DECIMAL)), 0)`,
-        economia: sql<number>`COALESCE(SUM(CAST(economia AS DECIMAL)), 0)`,
-        saldo: sql<number>`COALESCE(SUM(CAST(saldo_kwh AS DECIMAL)), 0)`,
-      })
-      .from(faturas);
-
-    const [geracaoStats] = await db
-      .select({
-        kwhGerado: sql<number>`COALESCE(SUM(CAST(kwh_gerado AS DECIMAL)), 0)`,
-      })
-      .from(geracaoMensal);
-
-    // Get faturas em atraso (past due date and still pending)
-    const today = new Date().toISOString().split('T')[0];
-    const faturasEmAtrasoResult = await this.getFaturasEmAtraso();
-
-    return {
-      totalUsinas: Number(usinasCount?.count) || 0,
-      totalClientes: Number(clientesCount?.count) || 0,
-      faturasPendentes: Number(faturasPendentesCount?.count) || 0,
-      faturasProcessadas: Number(faturasProcessadasCount?.count) || 0,
-      faturasEmAtraso: faturasEmAtrasoResult.length,
-      lucroMensal: Number(lucroStats?.lucro) || 0,
-      economiaTotalClientes: Number(lucroStats?.economia) || 0,
-      kwhGeradoMes: Number(geracaoStats?.kwhGerado) || 0,
-      saldoTotalKwh: Number(lucroStats?.saldo) || 0,
-    };
-  }
-  
-  async getFaturasEmAtraso(): Promise<(Fatura & { cliente?: Cliente })[]> {
-    const allFaturas = await this.getFaturas("pendente");
-    const today = new Date();
-    
-    return allFaturas.filter((fatura) => {
-      if (!fatura.dataVencimento) return false;
-      
-      // Parse date in DD/MM/YYYY format (Brazilian)
-      const parts = fatura.dataVencimento.split('/');
-      if (parts.length !== 3) return false;
-      
-      const vencimento = new Date(
-        parseInt(parts[2]),
-        parseInt(parts[1]) - 1,
-        parseInt(parts[0])
-      );
-      
-      return vencimento < today && fatura.status === "pendente";
-    });
   }
 
   async fixMonthConsistency() {

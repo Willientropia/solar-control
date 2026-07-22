@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useOpenOnQuery } from "@/hooks/use-open-on-query";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ type UsinaFormData = z.infer<typeof usinaFormSchema>;
 export default function UsinasPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(useOpenOnQuery("novo"));
   const [editingUsina, setEditingUsina] = useState<Usina | null>(null);
 
   const { data: usinas = [], isLoading } = useQuery<Usina[]>({

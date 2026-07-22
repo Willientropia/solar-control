@@ -43,6 +43,26 @@
   --chart-3: 173 58% 39%;
   --chart-4: 197 37% 24%;
   --chart-5: 43 74% 66%;
+
+  /* Paleta de séries do dashboard.
+   * Ordem fixa e validada para daltonismo contra a superfície dos cards
+   * (hsl(0 0% 98%) no claro, hsl(0 0% 11%) no escuro). A cor acompanha a
+   * entidade (a usina), nunca a posição dela num ranking — filtrar uma série
+   * não pode repintar as outras. Passando de --viz-5, o excedente vira
+   * "Outras" em --viz-neutral: gerar mais matizes quebraria a separação.
+   * Os tons escuros são uma seleção própria para o fundo escuro, não uma
+   * inversão automática dos claros. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-neutral: #898781;
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
+
   --font-sans: 'Roboto', 'Open Sans', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'Roboto Mono', Menlo, monospace;
@@ -127,6 +147,18 @@
   --chart-3: 173 58% 49%;
   --chart-4: 197 37% 54%;
   --chart-5: 43 74% 76%;
+
+  /* Mesmas oito matizes, reescalonadas para a superfície escura. */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-neutral: #898781;
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);

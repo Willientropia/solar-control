@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { ExcelService } from "./services/excel-service";
+import { buildDashboardOverview } from "./services/dashboard-service";
 import ExcelJS from "exceljs";
 import { insertUsinaSchema, insertClienteSchema, insertFaturaSchema, insertGeracaoMensalSchema, relatorioColunasSchema, relatorioResumoBoxesSchema, itemExtraSchema, type RelatorioColunas, type RelatorioResumoBoxes, type ItemExtra } from "@shared/schema";
 import { z } from "zod";
@@ -666,13 +667,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== DASHBOARD ====================
-  app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
+  // Payload completo do dashboard (KPIs, séries e pendências) numa consulta só.
+  // `?mes=Jan/2026` troca o mês de referência; sem o parâmetro usa o mês mais
+  // recente que tem dados lançados.
+  app.get("/api/dashboard/overview", requireAuth, async (req, res) => {
     try {
-      const stats = await storage.getDashboardStats();
-      res.json(stats);
+      const { mes } = req.query;
+      res.json(await buildDashboardOverview(typeof mes === "string" ? mes : undefined));
     } catch (error) {
-      console.error("Error fetching dashboard stats:", error);
-      res.status(500).json({ message: "Failed to fetch stats" });
+      console.error("Error building dashboard overview:", error);
+      res.status(500).json({ message: "Failed to build dashboard overview" });
     }
   });
 

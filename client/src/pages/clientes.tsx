@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { useOpenOnQuery } from "@/hooks/use-open-on-query";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
@@ -67,7 +68,7 @@ interface ClienteWithUsina extends Cliente {
 
 export default function ClientesPage() {
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(useOpenOnQuery("novo"));
   const [editingCliente, setEditingCliente] = useState<ClienteWithUsina | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState<ClienteWithUsina | null>(null);
