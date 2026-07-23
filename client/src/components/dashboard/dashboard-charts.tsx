@@ -26,6 +26,7 @@ import {
   VIZ_SERIES,
   VizEmpty,
   VizTooltip,
+  activeDot,
   axisProps,
   barProps,
   compactCurrency,
@@ -52,47 +53,80 @@ function recortarSerie<T extends Record<string, any>>(
 
 // ============ Preço do kWh ============
 
-export function PrecoKwhChart({ dados }: { dados: DashboardOverview["precoKwh"] }) {
+/**
+ * A pergunta que este gráfico responde é "por quanto estou vendendo o kWh
+ * hoje, para cada faixa de contrato" — não só qual é a tarifa da tabela.
+ * Todas as séries estão em R$/kWh, então dividem um eixo só.
+ */
+export function PrecoKwhChart({
+  dados,
+  descontos,
+}: {
+  dados: DashboardOverview["precoKwh"];
+  descontos: DashboardOverview["descontos"];
+}) {
+  // Recharts precisa das chaves no topo da linha: liquido["25"] vira d25.
   const serie = useMemo(
-    () => recortarSerie(dados, (d) => d.tabela !== null || d.medioFaturas !== null),
+    () =>
+      recortarSerie(dados, (d) => d.tabela !== null).map((d) => ({
+        ...d,
+        ...Object.fromEntries(
+          Object.entries(d.liquido).map(([percentual, valor]) => [`d${percentual}`, valor]),
+        ),
+      })),
     [dados],
   );
 
-  const comValor = serie.filter((d) => d.tabela !== null || d.medioFaturas !== null);
-  const ultimo = comValor[comValor.length - 1];
-  const penultimo = comValor[comValor.length - 2];
+  const comTabela = serie.filter((d) => d.tabela !== null);
+  const ultimo = comTabela[comTabela.length - 1];
+  const penultimo = comTabela[comTabela.length - 2];
 
-  const precoAtual = ultimo?.tabela ?? ultimo?.medioFaturas ?? null;
-  const precoAnterior = penultimo?.tabela ?? penultimo?.medioFaturas ?? null;
   const variacao =
-    precoAtual !== null && precoAnterior ? ((precoAtual - precoAnterior) / precoAnterior) * 100 : null;
+    ultimo?.tabela && penultimo?.tabela
+      ? ((ultimo.tabela - penultimo.tabela) / penultimo.tabela) * 100
+      : null;
 
-  // Preço subindo é ruim para o cliente — o ícone e o texto dizem a direção,
-  // a cor só reforça.
+  // Tarifa subindo aperta a margem — o ícone e o texto dizem a direção, a cor
+  // só reforça.
   const subiu = (variacao ?? 0) >= 0;
   const Icon = subiu ? TrendingUp : TrendingDown;
 
+  const rotuloFaixa = (percentual: number) =>
+    percentual === 0 ? "Sem desconto" : `−${formatPercent(percentual, 0)}`;
+
   const tabela = {
-    headers: ["Mês", "Tabela (R$/kWh)", "Média das faturas"],
+    headers: [
+      "Mês",
+      "Tabela",
+      "Fio B",
+      ...descontos.map((d) => rotuloFaixa(d.percentual)),
+    ],
     rows: serie.map((d) => [
       d.mes,
       d.tabela !== null ? formatPrecoKwh(d.tabela) : "—",
-      d.medioFaturas !== null ? formatPrecoKwh(d.medioFaturas) : "—",
+      d.fioB !== null ? `${formatPrecoKwh(d.fioB)}${d.fioBHerdado ? " *" : ""}` : "—",
+      ...descontos.map((f) => {
+        const valor = d.liquido[String(f.percentual)];
+        return valor === undefined ? "—" : formatPrecoKwh(valor);
+      }),
     ]),
   };
 
   return (
     <ChartCard
-      title="Preço do kWh"
-      description="Tarifa calculada em Preços kWh e média efetivamente cobrada nas faturas"
+      title="Preço do kWh comercializado"
+      description="Tarifa da tabela e o preço líquido por faixa de contrato: tabela × (1 − desconto) − fio B"
       legend={[
-        { label: "Tabela", color: VIZ_SERIES[0] },
-        { label: "Média das faturas", color: VIZ_SERIES[1] },
+        { label: "Tabela (bruto)", color: VIZ_SERIES[0] },
+        ...descontos.map((d, i) => ({
+          label: `${rotuloFaixa(d.percentual)} · ${d.clientes} UC${d.clientes > 1 ? "s" : ""}`,
+          color: seriesColor(i + 1),
+        })),
       ]}
       headline={
-        precoAtual !== null && (
+        ultimo?.tabela != null && (
           <div className="text-right">
-            <p className="text-xl font-semibold leading-none">{formatPrecoKwh(precoAtual)}</p>
+            <p className="text-xl font-semibold leading-none">{formatPrecoKwh(ultimo.tabela)}</p>
             {variacao !== null && (
               <p
                 className={cn(
@@ -115,77 +149,108 @@ export function PrecoKwhChart({ dados }: { dados: DashboardOverview["precoKwh"] 
           Cadastre pelo menos dois meses em <strong>Preços kWh</strong> para ver a curva da tarifa.
         </VizEmpty>
       ) : (
-        <div className={cn(ALTURA, "w-full")}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={serie} margin={{ top: 12, right: 56, bottom: 0, left: 0 }}>
-              <CartesianGrid {...gridProps} />
-              <XAxis dataKey="mes" {...axisProps} tickFormatter={shortMonthLabel} />
-              {/* Largura folgada: o Recharts quebra o texto do tick quando ele
-                  não cabe na faixa reservada ao eixo. */}
-              <YAxis
-                {...axisProps}
-                width={72}
-                domain={["auto", "auto"]}
-                tickFormatter={(v: number) =>
-                  `R$ ${v.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}`
-                }
-              />
-              <Tooltip
-                cursor={{ stroke: "hsl(var(--border))" }}
-                content={
-                  <VizTooltip
-                    defaultKind="preco"
-                    labels={{ tabela: "Tabela", medioFaturas: "Média das faturas" }}
-                  />
-                }
-              />
-              <Line
-                {...lineProps}
-                type="monotone"
-                dataKey="tabela"
-                name="Tabela"
-                stroke={VIZ_SERIES[0]}
-                connectNulls
-                activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
-              >
-                {/* Rótulo direto só na ponta — o eixo carrega o resto */}
-                <LabelList
-                  dataKey="tabela"
-                  content={({ x, y, value, index }: any) => {
-                    if (index !== serie.length - 1 || value === null || value === undefined) {
-                      return null;
-                    }
-                    return (
-                      <text
-                        x={Number(x) + 8}
-                        y={Number(y)}
-                        dy={4}
-                        className="fill-foreground text-[11px]"
-                      >
-                        {formatPrecoKwh(Number(value))}
-                      </text>
-                    );
-                  }}
+        <>
+          <div className={cn(ALTURA, "w-full")}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={serie} margin={{ top: 12, right: 68, bottom: 0, left: 0 }}>
+                <CartesianGrid {...gridProps} />
+                <XAxis dataKey="mes" {...axisProps} tickFormatter={shortMonthLabel} />
+                {/* Largura folgada: o Recharts quebra o texto do tick quando ele
+                    não cabe na faixa reservada ao eixo. */}
+                <YAxis
+                  {...axisProps}
+                  width={72}
+                  domain={["auto", "auto"]}
+                  tickFormatter={(v: number) =>
+                    `R$ ${v.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`
+                  }
                 />
-              </Line>
-              <Line
-                {...lineProps}
-                type="monotone"
-                dataKey="medioFaturas"
-                name="Média das faturas"
-                stroke={VIZ_SERIES[1]}
-                connectNulls
-                activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+                <Tooltip
+                  cursor={{ stroke: "hsl(var(--border))" }}
+                  content={
+                    <VizTooltip
+                      defaultKind="preco"
+                      labels={{
+                        tabela: "Tabela (bruto)",
+                        ...Object.fromEntries(
+                          descontos.map((d) => [`d${d.percentual}`, rotuloFaixa(d.percentual)]),
+                        ),
+                      }}
+                      footer={(row) =>
+                        row?.fioB != null
+                          ? `Fio B descontado: ${formatPrecoKwh(row.fioB)}${
+                              row.fioBHerdado ? " (herdado do mês anterior)" : ""
+                            }`
+                          : null
+                      }
+                    />
+                  }
+                />
+
+                <Line
+                  {...lineProps}
+                  type="monotone"
+                  dataKey="tabela"
+                  name="Tabela (bruto)"
+                  stroke={VIZ_SERIES[0]}
+                  connectNulls
+                  activeDot={activeDot}
+                >
+                  <LabelList dataKey="tabela" content={rotuloDePonta(serie.length)} />
+                </Line>
+
+                {descontos.map((d, i) => (
+                  <Line
+                    key={d.percentual}
+                    {...lineProps}
+                    type="monotone"
+                    dataKey={`d${d.percentual}`}
+                    name={rotuloFaixa(d.percentual)}
+                    stroke={seriesColor(i + 1)}
+                    connectNulls
+                    activeDot={activeDot}
+                  >
+                    <LabelList
+                      dataKey={`d${d.percentual}`}
+                      content={rotuloDePonta(serie.length)}
+                    />
+                  </Line>
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {ultimo?.fioB != null && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Fio B de {ultimo.mes}: {formatPrecoKwh(ultimo.fioB)}
+              {ultimo.fioBHerdado
+                ? " — herdado do mês anterior, ainda sem fatura neste mês"
+                : " — mediana das faturas do mês"}
+            </p>
+          )}
+        </>
       )}
     </ChartCard>
   );
+}
+
+/**
+ * Rótulo direto só na última ponta de cada linha: é ali que está a resposta
+ * ("estou vendendo por tanto hoje"). O resto dos pontos fica com o eixo e o
+ * tooltip — um número em cada ponto vira ruído.
+ */
+function rotuloDePonta(totalPontos: number) {
+  return ({ x, y, value, index }: any) => {
+    if (index !== totalPontos - 1 || value === null || value === undefined) return null;
+    return (
+      <text x={Number(x) + 8} y={Number(y)} dy={4} className="fill-foreground text-[11px]">
+        {formatPrecoKwh(Number(value))}
+      </text>
+    );
+  };
 }
 
 // ============ Geração por usina ============

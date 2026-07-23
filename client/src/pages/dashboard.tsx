@@ -256,7 +256,7 @@ export default function DashboardPage() {
           />
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <PrecoKwhChart dados={data.precoKwh} />
+            <PrecoKwhChart dados={data.precoKwh} descontos={data.descontos} />
             <GeracaoPorUsinaChart
               dados={data.geracaoPorUsina}
               usinas={data.usinas}

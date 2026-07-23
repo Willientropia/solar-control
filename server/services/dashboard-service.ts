@@ -21,6 +21,8 @@ export type { DashboardOverview };
 const HISTORICO_MESES = 12;
 /** Quantas UCs entram nos rankings de saldo. */
 const TOP_SALDOS = 5;
+/** Faixas de desconto no gráfico de preço; acima disso as linhas se confundem. */
+const MAX_FAIXAS_DESCONTO = 4;
 
 const num = (v: string | number | null | undefined): number => {
   if (v === null || v === undefined || v === "") return 0;
@@ -45,6 +47,15 @@ function isVencida(f: Fatura, hoje: Date): boolean {
 
 function pct(parte: number, total: number): number {
   return total > 0 ? (parte / total) * 100 : 0;
+}
+
+function mediana(valores: number[]): number | null {
+  if (!valores.length) return null;
+  const ordenados = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ordenados.length / 2);
+  return ordenados.length % 2
+    ? ordenados[meio]
+    : (ordenados[meio - 1] + ordenados[meio]) / 2;
 }
 
 /** Variação percentual entre dois períodos; null quando não há base de comparação. */
@@ -277,20 +288,54 @@ export async function buildDashboardOverview(mesSolicitado?: string): Promise<Da
   });
 
   // ---- Preço do kWh ----
-  // Duas leituras da mesma grandeza (R$/kWh): a tabela calculada em
-  // /precos-kwh e a média efetivamente cobrada nas faturas do mês.
+  // Faixas de desconto realmente praticadas, tiradas dos contratos ativos —
+  // criar um contrato novo com outro percentual faz a faixa aparecer sozinha.
+  const contagemPorDesconto = new Map<number, number>();
+  for (const cliente of clientesAtivos) {
+    if (!cliente.isPagante) continue;
+    const percentual = num(cliente.desconto);
+    contagemPorDesconto.set(percentual, (contagemPorDesconto.get(percentual) ?? 0) + 1);
+  }
+
+  const descontos = Array.from(contagemPorDesconto.entries())
+    .sort(([, a], [, b]) => b - a) // as faixas com mais UCs ganham a vaga
+    .slice(0, MAX_FAIXAS_DESCONTO)
+    .map(([percentual, clientes]) => ({ percentual, clientes }))
+    .sort((a, b) => a.percentual - b.percentual);
+
+  // O fio B é tarifa regulada: vale o mesmo para todas as faturas do mês, então
+  // a mediana absorve alguma extração torta sem depender de qual fatura veio
+  // primeiro. Meses sem fatura herdam o último valor conhecido — a tarifa não
+  // deixa de existir só porque os PDFs ainda não subiram.
+  let ultimoFioB: number | null = null;
+
   const precoKwh = janela.map((mes) => {
-    const tabela = precos.find((p) => sameMonthRef(p.mesReferencia, mes));
-    const precosFaturas = todasFaturas
-      .filter((f) => sameMonthRef(f.mesReferencia, mes) && num(f.precoKwh) > 0)
-      .map((f) => num(f.precoKwh));
+    const linhaTabela = precos.find((p) => sameMonthRef(p.mesReferencia, mes));
+    const tabela = linhaTabela ? num(linhaTabela.precoKwhCalculado) : null;
+
+    const fioBDoMes = mediana(
+      todasFaturas
+        .filter((f) => sameMonthRef(f.mesReferencia, mes) && num(f.precoFioB) > 0)
+        .map((f) => num(f.precoFioB)),
+    );
+    if (fioBDoMes !== null) ultimoFioB = fioBDoMes;
+    const fioB = fioBDoMes ?? ultimoFioB;
+
+    // Preço líquido por faixa: o que sobra depois do desconto do contrato e do
+    // fio B, que é repassado à concessionária.
+    const liquido: Record<string, number> = {};
+    if (tabela !== null && fioB !== null) {
+      for (const { percentual } of descontos) {
+        liquido[String(percentual)] = tabela * (1 - percentual / 100) - fioB;
+      }
+    }
 
     return {
       mes,
-      tabela: tabela ? num(tabela.precoKwhCalculado) : null,
-      medioFaturas: precosFaturas.length
-        ? precosFaturas.reduce((acc, p) => acc + p, 0) / precosFaturas.length
-        : null,
+      tabela,
+      fioB,
+      fioBHerdado: fioBDoMes === null && fioB !== null,
+      liquido,
     };
   });
 
@@ -339,6 +384,7 @@ export async function buildDashboardOverview(mesSolicitado?: string): Promise<Da
       ),
     },
     usinas: usinasOverview,
+    descontos,
     precoKwh,
     historico,
     geracaoPorUsina,

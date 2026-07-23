@@ -66,6 +66,24 @@ export interface DashboardSaldoUC {
   mes: string;
 }
 
+/**
+ * Preço do kWh de um mês, em R$/kWh.
+ *
+ * `liquido` é o que sobra por faixa de contrato depois do desconto e do fio B
+ * (repassado à concessionária): `tabela × (1 − desconto) − fioB`. A chave é o
+ * percentual de desconto em texto — "25" para 25%.
+ */
+export interface DashboardPrecoMes {
+  mes: string;
+  /** Tarifa calculada na página Preços kWh a partir de TUSD, TE e impostos. */
+  tabela: number | null;
+  /** Mediana do fio B das faturas do mês. */
+  fioB: number | null;
+  /** true quando o mês não tinha fatura e o fio B veio do mês anterior. */
+  fioBHerdado: boolean;
+  liquido: Record<string, number>;
+}
+
 export type DashboardPendenciaTipo = "sem_fatura" | "sem_pdf" | "nao_pago" | "vencida";
 
 export interface DashboardPendencia {
@@ -92,8 +110,9 @@ export interface DashboardOverview {
     economia: number | null;
   };
   usinas: DashboardUsina[];
-  /** Duas leituras da mesma grandeza (R$/kWh) — tabela e média das faturas. */
-  precoKwh: { mes: string; tabela: number | null; medioFaturas: number | null }[];
+  /** Faixas de desconto praticadas nos contratos ativos, da menor para a maior. */
+  descontos: { percentual: number; clientes: number }[];
+  precoKwh: DashboardPrecoMes[];
   historico: {
     mes: string;
     geracao: number;
