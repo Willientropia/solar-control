@@ -290,10 +290,13 @@ export async function buildDashboardOverview(mesSolicitado?: string): Promise<Da
   // ---- Preço do kWh ----
   // Faixas de desconto realmente praticadas, tiradas dos contratos ativos —
   // criar um contrato novo com outro percentual faz a faixa aparecer sozinha.
+  // Só entram contratos com desconto: 0% é uso próprio, não kWh comercializado
+  // (sem desconto não faz sentido descontar o fio B do preço de venda).
   const contagemPorDesconto = new Map<number, number>();
   for (const cliente of clientesAtivos) {
     if (!cliente.isPagante) continue;
     const percentual = num(cliente.desconto);
+    if (percentual <= 0) continue;
     contagemPorDesconto.set(percentual, (contagemPorDesconto.get(percentual) ?? 0) + 1);
   }
 
