@@ -198,6 +198,20 @@ public actor APIClient {
         try await get("/api/geracao")
     }
 
+    /// Tarifa do mês atual; sem cadastro para o mês, a última cadastrada.
+    /// nil quando nenhum preço foi cadastrado ainda.
+    public func precoKwhAtual(hoje: Date = Date()) async throws -> PrecoKwh? {
+        do {
+            let mes = MonthRef.current(hoje)
+            let preco: PrecoKwh = try await get("/api/precos-kwh/mes/\(Self.segmento(mes))")
+            if preco.precoKwhCalculado > 0 { return preco }
+        } catch APIError.naoEncontrado {
+            // Mês ainda sem tarifa: cai para a última.
+        }
+        let ultimo: PrecoKwh? = try await get("/api/precos-kwh/ultimo")
+        return ultimo.flatMap { $0.precoKwhCalculado > 0 ? $0 : nil }
+    }
+
     // MARK: Escrita
 
     /// Avança ou desfaz uma etapa do fluxo B (gerada, enviada, recebida).
@@ -252,6 +266,11 @@ public actor APIClient {
 
     // MARK: Infra
 
+    /// Um valor que vira um único segmento da URL, mesmo com "/" ("Nov/2026").
+    static func segmento(_ valor: String) -> String {
+        valor.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? valor
+    }
+
     private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         let request = try makeRequest(path, method: "GET", query: query, body: nil)
         return try decodificar(try await executarComRefresh(request))
@@ -266,10 +285,17 @@ public actor APIClient {
         guard let baseURL else { throw APIError.servidorNaoConfigurado }
         guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { throw APIError.urlInvalida }
 
-        // `path` pode vir do banco já com %20; desfaz antes para não codificar duas vezes.
-        let caminho = path.removingPercentEncoding ?? path
-        let base = comps.path.hasSuffix("/") ? String(comps.path.dropLast()) : comps.path
-        comps.path = base + (caminho.hasPrefix("/") ? caminho : "/" + caminho)
+        // Codifica segmento a segmento. `path` pode vir do banco já com %20,
+        // então cada pedaço é decodificado antes para não codificar duas vezes;
+        // um %2F dentro do segmento (o "/" de "Nov/2026") continua %2F.
+        var permitidos = CharacterSet.urlPathAllowed
+        permitidos.remove(charactersIn: "/")
+        let segmentos = path.split(separator: "/", omittingEmptySubsequences: true).map { pedaco -> String in
+            let cru = String(pedaco).removingPercentEncoding ?? String(pedaco)
+            return cru.addingPercentEncoding(withAllowedCharacters: permitidos) ?? cru
+        }
+        let base = comps.percentEncodedPath.hasSuffix("/") ? String(comps.percentEncodedPath.dropLast()) : comps.percentEncodedPath
+        comps.percentEncodedPath = base + "/" + segmentos.joined(separator: "/")
         comps.queryItems = query.isEmpty ? nil : query
         guard let url = comps.url else { throw APIError.urlInvalida }
 

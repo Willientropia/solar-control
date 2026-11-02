@@ -58,6 +58,10 @@ struct MainTabView: View {
             UsinasView()
                 .tabItem { Label("Usinas", systemImage: "sun.max") }
                 .tag(Aba.usinas)
+
+            SimuladorView()
+                .tabItem { Label("Simular", systemImage: "percent") }
+                .tag(Aba.simular)
         }
         .environmentObject(painel)
     }

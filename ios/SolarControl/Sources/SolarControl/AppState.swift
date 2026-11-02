@@ -3,7 +3,7 @@ import SwiftUI
 import SolarCore
 
 enum Aba: Hashable {
-    case painel, faturas, clientes, usinas
+    case painel, faturas, clientes, usinas, simular
 }
 
 /// Estado global: servidor, sessão e usuário logado.

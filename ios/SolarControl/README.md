@@ -9,6 +9,7 @@ com o mesmo login. Não precisa mexer no servidor.
 | **Faturas** | Faturas do mês agrupadas por usina, com busca por cliente ou UC e filtros *Pendentes* e *Completas*. Deslize a linha para a esquerda para marcar a próxima etapa (Gerada → Enviada → Recebida). No detalhe: andamento das 5 etapas, PDF da concessionária, gerar a fatura com desconto, valores e energia. Administradores mudam o status da conta da concessionária. |
 | **Clientes** | Lista por usina, com busca por nome, UC ou contrato. No detalhe: saldo de crédito, média de consumo, quanto o saldo dura, gráfico de consumo, contrato, endereço e histórico de faturas. |
 | **Usinas** | Cartões com performance, lucro, geração e faturas. No detalhe: gráfico de geração contra a prevista, pendências e clientes da usina. |
+| **Simular** | Para mostrar a economia a um cliente na rua. Digite o consumo em kWh e o desconto; iluminação pública, nome e endereço são opcionais. O app aplica a tarifa do mês (página Preços kWh) e gera um PDF de exemplo, marcado como simulação, para mostrar ou mandar pelo WhatsApp. |
 
 O botão com as iniciais, no Painel, mostra a conta, o servidor e o botão Sair.
 
@@ -59,6 +60,20 @@ token (7 dias). Depois disso, pede a senha de novo.
 local (IP `192.168.x.x` ou nome `.local`). Se o servidor estiver em
 `http://IP-do-VPS:5000`, coloque um proxy com HTTPS na frente (Caddy ou Nginx
 com Let's Encrypt). O app avisa quando for esse o problema.
+
+## Conta da simulação
+
+```text
+energia      = kWh × tarifa do mês
+sem desconto = energia + iluminação pública
+com desconto = energia × (1 − desconto) + iluminação pública
+economia     = energia × desconto        (× 12 para o ano)
+```
+
+A tarifa é a do mês atual em Preços kWh; sem cadastro no mês, a última
+cadastrada. O app guarda a última tarifa baixada e a usa sem internet. Se não
+houver nenhuma, deixa digitar a tarifa à mão. O PDF é desenhado no próprio
+iPhone, sem passar pelo servidor.
 
 ## Limites desta versão
 

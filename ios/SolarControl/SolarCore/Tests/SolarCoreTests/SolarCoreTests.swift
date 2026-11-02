@@ -288,3 +288,67 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(r1.url?.absoluteString, "https://solar.exemplo.com/api/faturas/pdf/Usina%20A/jan.pdf")
     }
 }
+
+// MARK: - Simulação
+
+final class SimulacaoTests: XCTestCase {
+    func testContaSimples() {
+        let s = Simulacao(kwh: 350, desconto: 25, tarifa: 0.9, iluminacao: 15.5, mesTarifa: "Nov/2026")
+        XCTAssertEqual(s.valorEnergia, 315)
+        XCTAssertEqual(s.valorDesconto, 78.75)
+        XCTAssertEqual(s.totalSemDesconto, 330.5)
+        XCTAssertEqual(s.totalComDesconto, 251.75)
+        XCTAssertEqual(s.economiaMensal, 78.75)
+        XCTAssertEqual(s.economiaAnual, 945)
+        XCTAssertTrue(s.valida)
+    }
+
+    func testArredondaAoCentavo() {
+        let s = Simulacao(kwh: 123, desconto: 15, tarifa: 0.912345, mesTarifa: "Nov/2026")
+        XCTAssertEqual(s.valorEnergia, 112.22)
+        XCTAssertEqual(s.valorDesconto, 16.83)
+        XCTAssertEqual(s.totalComDesconto, 95.39, accuracy: 0.0001)
+    }
+
+    func testValidacao() {
+        XCTAssertFalse(Simulacao(kwh: 0, desconto: 25, tarifa: 0.9, mesTarifa: "").valida)
+        XCTAssertFalse(Simulacao(kwh: 100, desconto: 0, tarifa: 0.9, mesTarifa: "").valida)
+        XCTAssertFalse(Simulacao(kwh: 100, desconto: 120, tarifa: 0.9, mesTarifa: "").valida)
+        XCTAssertFalse(Simulacao(kwh: 100, desconto: 20, tarifa: 0, mesTarifa: "").valida)
+    }
+
+    func testNumeroDigitado() {
+        XCTAssertEqual(numeroDigitado("350"), 350)
+        XCTAssertEqual(numeroDigitado("350,5"), 350.5)
+        XCTAssertEqual(numeroDigitado("1.234,56"), 1234.56)
+        XCTAssertEqual(numeroDigitado("R$ 12,90"), 12.9)
+        XCTAssertEqual(numeroDigitado("25%"), 25)
+        XCTAssertEqual(numeroDigitado("12.5"), 12.5)
+        XCTAssertEqual(numeroDigitado("1.234.567"), 1234567)
+        XCTAssertNil(numeroDigitado(""))
+        XCTAssertNil(numeroDigitado("abc"))
+    }
+
+    func testPrecoDoMesOuUltimo() async throws {
+        let store = MemoryTokenStore(AuthTokens(accessToken: "A", refreshToken: "R"))
+        let novembro = Date(timeIntervalSince1970: 1_793_620_800) // 2026-11-02
+        let transport = FakeTransport([
+            (404, #"{"message":"Preço kWh not found for this month"}"#),
+            (200, #"{"id":"p1","mesReferencia":"OUT/2026","precoKwhCalculado":"0.912345","tusd":"1"}"#),
+        ])
+        let api = APIClient(baseURL: URL(string: "https://x.com")!, tokenStore: store, transport: transport)
+        let preco = try await api.precoKwhAtual(hoje: novembro)
+        XCTAssertEqual(preco?.precoKwhCalculado, 0.912345)
+        XCTAssertEqual(preco?.mesReferencia, "OUT/2026")
+        XCTAssertEqual(transport.requisicoes[0].url?.absoluteString, "https://x.com/api/precos-kwh/mes/Nov%2F2026")
+        XCTAssertEqual(transport.requisicoes[1].url?.path, "/api/precos-kwh/ultimo")
+    }
+
+    func testSemPrecoCadastrado() async throws {
+        let store = MemoryTokenStore(AuthTokens(accessToken: "A", refreshToken: "R"))
+        let transport = FakeTransport([(404, "{}"), (200, "null")])
+        let api = APIClient(baseURL: URL(string: "https://x.com")!, tokenStore: store, transport: transport)
+        let preco = try await api.precoKwhAtual()
+        XCTAssertNil(preco)
+    }
+}
