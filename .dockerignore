@@ -6,6 +6,7 @@ dist
 .env.*
 ! .env.example
 backups/
+ios/
 docs/
 scripts/
 *.md

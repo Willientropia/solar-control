@@ -1,0 +1,6 @@
+version: 1
+bundleID: com.pedro.solarcontrol
+iconPath: Recursos/icone.png
+infoPath: Info.plist
+resources:
+- Recursos/logo.png
